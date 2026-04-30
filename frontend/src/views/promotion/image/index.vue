@@ -16,6 +16,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="positionType" label="插入位置" width="100" />
+        <el-table-column prop="products" label="关联产品" width="150">
+          <template #default="{ row }">
+            <span v-if="row.products && row.products.length > 0">{{ row.products.map(p => p.name).join(', ') }}</span>
+            <span v-else style="color: #909399">未关联</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '启用' : '禁用' }}</el-tag>
@@ -41,13 +47,27 @@
         <el-form-item label="插入位置" prop="positionType">
           <el-select v-model="form.positionType" style="width: 100%">
             <el-option label="自动" value="auto" />
-            <el-option label="首段" value="first" />
-            <el-option label="尾段" value="last" />
-            <el-option label="自定义" value="custom" />
+            <el-option label="开头之前" value="before_first" />
+            <el-option label="结尾之后" value="after_last" />
+            <el-option label="指定段落" value="custom" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="form.positionType === 'custom'" label="段落号">
-          <el-input-number v-model="form.positionValue" :min="1" />
+        <template v-if="form.positionType === 'custom'">
+          <el-form-item label="段落号">
+            <el-input-number v-model="form.positionValue" :min="1" style="width: 100px" />
+          </el-form-item>
+          <el-form-item label="插入方式">
+            <el-select v-model="form.positionMode" style="width: 100%">
+              <el-option label="段前" value="before" />
+              <el-option label="段后" value="after" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <el-form-item label="关联产品" prop="productIds">
+          <el-select v-model="form.productIds" multiple style="width: 100%" placeholder="请选择关联产品">
+            <el-option v-for="product in productList" :key="product.id" :label="product.name" :value="product.id" />
+          </el-select>
+          <span v-if="productList.length === 0" style="color: #909399; font-size: 12px;">暂无产品，请先在产品管理中添加</span>
         </el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="form.status" :active-value="0" :inactive-value="1" />
@@ -72,7 +92,8 @@ const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
-const form = reactive({ id: null, url: '', positionType: 'auto', positionValue: 1, status: 1 })
+const productList = ref([])
+const form = reactive({ id: null, url: '', positionType: 'auto', positionValue: 1, positionMode: 'before', productIds: [], status: 1 })
 const rules = { url: [{ required: true, message: '请输入图片URL', trigger: 'blur' }] }
 
 const loadData = async () => {
@@ -85,8 +106,20 @@ const loadData = async () => {
   finally { loading.value = false }
 }
 
-const handleAdd = () => { Object.assign(form, { id: null, url: '', positionType: 'auto', positionValue: 1, status: 1 }); dialogTitle.value = '新增图片'; dialogVisible.value = true }
-const handleEdit = (row) => { Object.assign(form, { id: row.id, url: row.url, positionType: row.positionType, positionValue: row.positionValue, status: row.status }); dialogTitle.value = '编辑图片'; dialogVisible.value = true }
+const loadProducts = async () => {
+  try {
+    const res = await api.get('/products', { params: { pageSize: 100 } })
+    productList.value = res.data.list || []
+  } catch (error) { ElMessage.error('加载产品列表失败') }
+}
+
+const handleAdd = () => { Object.assign(form, { id: null, url: '', positionType: 'auto', positionValue: 1, positionMode: 'before', productIds: [], status: 1 }); dialogTitle.value = '新增图片'; dialogVisible.value = true }
+const handleEdit = (row) => { 
+  const productIds = row.products ? row.products.map(p => p.id) : []
+  Object.assign(form, { id: row.id, url: row.url, positionType: row.positionType, positionValue: row.positionValue, positionMode: row.positionMode || 'before', productIds: productIds, status: row.status }); 
+  dialogTitle.value = '编辑图片'; 
+  dialogVisible.value = true 
+}
 const handleDelete = async (row) => {
   try { await ElMessageBox.confirm('确定删除?', '提示', { type: 'warning' }); await api.delete(`/images/${row.id}`); ElMessage.success('删除成功'); loadData() }
   catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
@@ -100,7 +133,7 @@ const handleSubmit = async () => {
     }
   })
 }
-onMounted(() => { loadData() })
+onMounted(() => { loadData(); loadProducts() })
 </script>
 
 <style scoped>

@@ -34,6 +34,7 @@ def get_images():
             'url': img.url,
             'positionType': img.position_type,
             'positionValue': img.position_value,
+            'positionMode': img.position_mode,
             'products': products,
             'status': img.status,
             'createTime': img.create_time.strftime('%Y-%m-%d %H:%M:%S') if img.create_time else None
@@ -55,6 +56,7 @@ def create_image():
         url=url,
         position_type=data.get('positionType', 'auto'),
         position_value=data.get('positionValue'),
+        position_mode=data.get('positionMode', 'before'),
         status=data.get('status', 1)
     )
     
@@ -88,6 +90,8 @@ def update_image(image_id):
         image.position_type = data['positionType']
     if 'positionValue' in data:
         image.position_value = data['positionValue']
+    if 'positionMode' in data:
+        image.position_mode = data['positionMode']
     if 'status' in data:
         image.status = data['status']
     

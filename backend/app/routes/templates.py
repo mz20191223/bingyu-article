@@ -16,8 +16,6 @@ def get_content_templates():
 
     query = ContentPromptTemplate.query
 
-    if product_id:
-        query = query.filter(ContentPromptTemplate.product_id == product_id)
     if status is not None:
         query = query.filter(ContentPromptTemplate.status == status)
 
@@ -35,7 +33,6 @@ def get_content_templates():
             'keywordPrompt': t.keyword_prompt,
             'contentPrompt': t.content_prompt,
             'conclusionPrompt': t.conclusion_prompt,
-            'productId': t.product_id,
             'isDefault': t.is_default,
             'status': t.status,
             'createTime': t.create_time.strftime('%Y-%m-%d %H:%M:%S') if t.create_time else None
@@ -62,10 +59,8 @@ def create_content_template():
         keyword_prompt=data.get('keywordPrompt'),
         content_prompt=content_prompt,
         conclusion_prompt=data.get('conclusionPrompt'),
-        product_id=data.get('productId'),
         is_default=data.get('isDefault', 0),
-        status=data.get('status', 1),
-        create_by=g.user_id
+        status=data.get('status', 1)
     )
     db.session.add(template)
     db.session.commit()
@@ -88,8 +83,6 @@ def update_content_template(template_id):
     for key in ['name', 'businessType', 'metaTitle', 'metaDescription', 'keywordPrompt', 'contentPrompt', 'conclusionPrompt']:
         if key in data:
             setattr(template, 'content_prompt' if key == 'contentPrompt' else key.lower(), data[key])
-    if 'productId' in data:
-        template.product_id = data['productId']
     if 'status' in data:
         template.status = data['status']
 
@@ -143,8 +136,6 @@ def get_title_templates():
 
     query = TitlePromptTemplate.query
 
-    if product_id:
-        query = query.filter(TitlePromptTemplate.product_id == product_id)
     if status is not None:
         query = query.filter(TitlePromptTemplate.status == status)
 
@@ -158,7 +149,6 @@ def get_title_templates():
             'name': t.name,
             'businessType': t.business_type,
             'titlePrompt': t.title_prompt,
-            'productId': t.product_id,
             'isDefault': t.is_default,
             'status': t.status,
             'createTime': t.create_time.strftime('%Y-%m-%d %H:%M:%S') if t.create_time else None
@@ -181,10 +171,8 @@ def create_title_template():
         name=name,
         business_type=data.get('businessType'),
         title_prompt=title_prompt,
-        product_id=data.get('productId'),
         is_default=data.get('isDefault', 0),
-        status=data.get('status', 1),
-        create_by=g.user_id
+        status=data.get('status', 1)
     )
     db.session.add(template)
     db.session.commit()
@@ -210,8 +198,6 @@ def update_title_template(template_id):
         template.business_type = data['businessType']
     if 'titlePrompt' in data:
         template.title_prompt = data['titlePrompt']
-    if 'productId' in data:
-        template.product_id = data['productId']
     if 'status' in data:
         template.status = data['status']
 

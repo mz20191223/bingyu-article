@@ -28,7 +28,16 @@ def get_websites():
             'code': w.code,
             'loginUrl': w.login_url,
             'publishUrl': w.publish_url,
+            'username': w.username,
+            'password': '***' if w.password else '',
             'cookie': '***' if w.cookie else '',
+            'usernameSelector': w.username_selector,
+            'passwordSelector': w.password_selector,
+            'loginButtonSelector': w.login_button_selector,
+            'titleSelector': w.title_selector,
+            'contentSelector': w.content_selector,
+            'categorySelector': w.category_selector,
+            'publishButtonSelector': w.publish_button_selector,
             'status': w.status,
             'createTime': w.create_time.strftime('%Y-%m-%d %H:%M:%S') if w.create_time else None
         })
@@ -52,7 +61,16 @@ def get_website(website_id):
             'code': website.code,
             'loginUrl': website.login_url,
             'publishUrl': website.publish_url,
+            'username': website.username,
+            'password': website.password,
             'cookie': website.cookie,
+            'usernameSelector': website.username_selector,
+            'passwordSelector': website.password_selector,
+            'loginButtonSelector': website.login_button_selector,
+            'titleSelector': website.title_selector,
+            'contentSelector': website.content_selector,
+            'categorySelector': website.category_selector,
+            'publishButtonSelector': website.publish_button_selector,
             'status': website.status
         }
     })
@@ -66,8 +84,8 @@ def create_website():
     code = data.get('code')
     login_url = data.get('loginUrl')
 
-    if not name or not code or not login_url:
-        return jsonify({'code': 400, 'msg': '必填项不能为空', 'data': None})
+    if not name or not code:
+        return jsonify({'code': 400, 'msg': '网站名称和标识不能为空', 'data': None})
 
     if Website.query.filter_by(code=code).first():
         return jsonify({'code': 400, 'msg': '网站标识已存在', 'data': None})
@@ -75,9 +93,18 @@ def create_website():
     website = Website(
         name=name,
         code=code,
-        login_url=login_url,
+        login_url=data.get('loginUrl'),
         publish_url=data.get('publishUrl'),
+        username=data.get('username'),
+        password=data.get('password'),
         cookie=data.get('cookie'),
+        username_selector=data.get('usernameSelector'),
+        password_selector=data.get('passwordSelector'),
+        login_button_selector=data.get('loginButtonSelector'),
+        title_selector=data.get('titleSelector'),
+        content_selector=data.get('contentSelector'),
+        category_selector=data.get('categorySelector'),
+        publish_button_selector=data.get('publishButtonSelector'),
         status=data.get('status', 1)
     )
     db.session.add(website)
@@ -104,8 +131,26 @@ def update_website(website_id):
         website.login_url = data['loginUrl']
     if 'publishUrl' in data:
         website.publish_url = data['publishUrl']
+    if 'username' in data:
+        website.username = data['username']
+    if 'password' in data:
+        website.password = data['password']
     if 'cookie' in data:
         website.cookie = data['cookie']
+    if 'usernameSelector' in data:
+        website.username_selector = data['usernameSelector']
+    if 'passwordSelector' in data:
+        website.password_selector = data['passwordSelector']
+    if 'loginButtonSelector' in data:
+        website.login_button_selector = data['loginButtonSelector']
+    if 'titleSelector' in data:
+        website.title_selector = data['titleSelector']
+    if 'contentSelector' in data:
+        website.content_selector = data['contentSelector']
+    if 'categorySelector' in data:
+        website.category_selector = data['categorySelector']
+    if 'publishButtonSelector' in data:
+        website.publish_button_selector = data['publishButtonSelector']
     if 'status' in data:
         website.status = data['status']
 

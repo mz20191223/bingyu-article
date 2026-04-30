@@ -54,10 +54,11 @@
         <el-form-item v-if="form.positionType === 'custom'" label="段落号">
           <el-input-number v-model="form.positionValue" :min="1" />
         </el-form-item>
-        <el-form-item label="关联产品">
+        <el-form-item label="关联产品" prop="productIds">
           <el-select v-model="form.productIds" multiple style="width: 100%" placeholder="请选择关联产品">
             <el-option v-for="product in productList" :key="product.id" :label="product.name" :value="product.id" />
           </el-select>
+          <span v-if="productList.length === 0" style="color: #909399; font-size: 12px;">暂无产品，请先在产品管理中添加</span>
         </el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="form.status" :active-value="0" :inactive-value="1" />
@@ -100,7 +101,11 @@ const loadProducts = async () => {
   try {
     const res = await api.get('/products', { params: { pageSize: 100 } })
     productList.value = res.data.list || []
-  } catch (error) { ElMessage.error('加载产品列表失败') }
+    console.log('Product list loaded:', productList.value)
+  } catch (error) { 
+    console.error('Failed to load products:', error)
+    ElMessage.error('加载产品列表失败') 
+  }
 }
 
 const handleAdd = () => { Object.assign(form, { id: null, url: '', positionType: 'auto', positionValue: 1, productIds: [], status: 1 }); dialogTitle.value = '新增图片'; dialogVisible.value = true }

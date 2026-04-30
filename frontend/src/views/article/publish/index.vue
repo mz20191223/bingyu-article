@@ -41,7 +41,8 @@
             </el-select>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="nextStep" :disabled="!canNext">下一步</el-button>
+            <el-button type="primary" @click="nextStep" :disabled="!canNext">下一步（使用AI生成）</el-button>
+            <el-button @click="goToManualInput">直接录入（手动编写）</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -49,15 +50,15 @@
       <div v-show="currentStep === 1">
         <el-form label-width="120px">
           <el-form-item label="文章标题">
-            <el-input v-model="article.title" type="textarea" :rows="2" style="width: 600px" />
+            <el-input v-model="article.title" type="textarea" :rows="2" style="width: 600px" placeholder="请输入文章标题（可手动输入或点击AI生成）" />
           </el-form-item>
           <el-form-item label="文章内容">
-            <el-input v-model="article.content" type="textarea" :rows="15" style="width: 600px" />
+            <el-input v-model="article.content" type="textarea" :rows="15" style="width: 600px" placeholder="请输入文章内容（可手动输入或点击AI生成）" />
           </el-form-item>
           <el-form-item>
             <el-button @click="currentStep = 0">上一步</el-button>
             <el-button type="primary" @click="generateArticle" :loading="generating">AI生成</el-button>
-            <el-button type="success" @click="goToPublish">下一步</el-button>
+            <el-button type="success" @click="goToPublish">发布文章</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -128,6 +129,11 @@ const nextStep = () => {
   currentStep.value = 1
 }
 
+const goToManualInput = () => {
+  currentStep.value = 1
+  ElMessage.info('请在下方输入文章标题和内容')
+}
+
 const generateArticle = async () => {
   generating.value = true
   try {
@@ -150,7 +156,7 @@ const generateArticle = async () => {
 
 const goToPublish = async () => {
   if (!article.title || !article.content) {
-    ElMessage.warning('请先生成文章内容')
+    ElMessage.warning('请输入文章标题和内容（可手动输入或点击AI生成）')
     return
   }
   try {

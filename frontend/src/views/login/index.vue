@@ -2,7 +2,7 @@
   <div class="login-container">
     <div class="login-card">
       <div class="login-header">
-        <h2>软文自动发布工具</h2>
+        <h2>冰鱼自动发布工具</h2>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" class="login-form">
         <el-form-item prop="username">

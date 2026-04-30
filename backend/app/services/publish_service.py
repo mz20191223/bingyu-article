@@ -1,94 +1,9 @@
-import os
+import time
 import json
 import uuid
 from datetime import datetime
 from app.models import db, AIModel, ContentPromptTemplate, TitlePromptTemplate, Image, Keyword, Product, Website, PublishRecord
-
-
-class AIService:
-    def __init__(self, model_id=None):
-        if model_id:
-            self.model = AIModel.query.get(model_id)
-        else:
-            self.model = AIModel.query.filter_by(is_default=1, status=0).first()
-        if not self.model:
-            raise Exception('未配置AI模型或模型已禁用')
-
-    def generate_title(self, template_id, product, keywords):
-        if template_id:
-            template = TitlePromptTemplate.query.get(template_id)
-        else:
-            template = TitlePromptTemplate.query.filter_by(is_default=1, status=0).first()
-        if not template:
-            raise Exception('未配置标题模板')
-
-        prompt = template.title_prompt
-        prompt = prompt.replace('{product_name}', product.name if product else '')
-        prompt = prompt.replace('{keywords}', ', '.join([k.keyword for k in keywords[:5]]) if keywords else '')
-
-        return self._call_ai(prompt)
-
-    def generate_content(self, template_id, product, keywords):
-        if template_id:
-            template = ContentPromptTemplate.query.get(template_id)
-        else:
-            template = ContentPromptTemplate.query.filter_by(is_default=1, status=0).first()
-        if not template:
-            raise Exception('未配置内容模板')
-
-        prompt = template.content_prompt
-        prompt = prompt.replace('{product_name}', product.name if product else '')
-        prompt = prompt.replace('{product_url}', product.url if product else '')
-        prompt = prompt.replace('{keywords}', ', '.join([k.keyword for k in keywords[:10]]) if keywords else '')
-
-        conclusion = template.conclusion_prompt or ''
-        conclusion = conclusion.replace('{product_name}', product.name if product else '')
-
-        content = self._call_ai(prompt)
-        if conclusion:
-            content += '\n\n' + conclusion
-
-        return content
-
-    def _call_ai(self, prompt):
-        if self.model.provider == 'openai':
-            return self._call_openai(prompt)
-        elif self.model.provider == 'zhipuai':
-            return self._call_zhipuai(prompt)
-        else:
-            raise Exception(f'不支持的服务商: {self.model.provider}')
-
-    def _call_openai(self, prompt):
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self.model.api_key, base_url=self.model.api_url)
-            response = client.chat.completions.create(
-                model=self.model.model_name or 'gpt-3.5-turbo',
-                messages=[{'role': 'user', 'content': prompt}],
-                temperature=0.8
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            raise Exception(f'OpenAI调用失败: {str(e)}')
-
-    def _call_zhipuai(self, prompt):
-        try:
-            import requests
-            headers = {'Authorization': f'Bearer {self.model.api_key}'}
-            data = {
-                'prompt': prompt,
-                'model': self.model.model_name or 'glm-4',
-                'temperature': 0.8
-            }
-            response = requests.post(self.model.api_url, json=data, headers=headers, timeout=60)
-            result = response.json()
-            if result.get('code') == 200:
-                return result['data']['choices'][0]['content']
-            else:
-                raise Exception(result.get('msg', '智谱AI调用失败'))
-        except Exception as e:
-            raise Exception(f'智谱AI调用失败: {str(e)}')
-
+from app.services.ai_service import AIService
 
 def generate_article(product_id, website_ids, content_template_id, title_template_id, model_id, keyword_ids):
     product = Product.query.get(product_id) if product_id else None
@@ -106,11 +21,12 @@ def generate_article(product_id, website_ids, content_template_id, title_templat
     title = ai_service.generate_title(title_template_id, product, keywords)
     content = ai_service.generate_content(content_template_id, product, keywords)
 
-    images = Image.query.filter(
-        Image.status == 0
+    images = Image.query.join(Image.products).filter(
+        Image.status == 0,
+        Product.id == product_id
     ).all()
 
-    content_with_images = insert_images(content, images, website_ids)
+    content_with_images = insert_images(content, images)
 
     return {
         'title': title,
@@ -119,23 +35,78 @@ def generate_article(product_id, website_ids, content_template_id, title_templat
     }
 
 
-def insert_images(content, images, website_ids):
+def insert_images(content, images):
     if not images:
         return {'content': content, 'images': []}
 
-    paragraphs = content.split('\n\n')
     result_images = []
-
+    
+    # 先按\n\n分割段落
+    paragraphs = content.split('\n\n')
+    # 如果只有一段，尝试用\n分割
+    if len(paragraphs) <= 1:
+        paragraphs = content.split('\n')
+    # 过滤空段落并添加<p>标签
+    paragraphs = [f'<p>{p.strip()}</p>' for p in paragraphs if p.strip()]
+    
+    # 计算每张图片在原始段落中的插入位置
+    # 存储格式: (插入位置索引, 图片HTML)
+    insert_points = []
+    
     for img in images:
-        result_images.append({'url': img.url, 'position_type': img.position_type, 'position_value': img.position_value})
-
-    return {'content': content, 'images': result_images}
+        img_info = {'url': img.url, 'position_type': img.position_type, 'position_value': img.position_value, 'position_mode': img.position_mode}
+        result_images.append(img_info)
+        
+        img_html = f'<p><img src="{img.url}" alt="产品图片" /></p>'
+        
+        if img.position_type == 'before_first':
+            # 插入到最前面
+            insert_points.append((0, img_html))
+        elif img.position_type == 'after_last':
+            # 插入到最后面
+            insert_points.append((len(paragraphs), img_html))
+        else:
+            # custom / before_paragraph / after_paragraph
+            # position_value直接对应段落号(1-based)
+            pos = img.position_value
+            
+            if img.position_mode == 'after' or img.position_type == 'after_paragraph':
+                # 在段落pos之后插入，位置就是pos
+                insert_pos = pos
+            else:
+                # 在段落pos之前插入，位置是pos-1
+                insert_pos = pos - 1
+            
+            # 边界检查
+            insert_pos = max(0, min(insert_pos, len(paragraphs)))
+            insert_points.append((insert_pos, img_html))
+    
+    # 按插入位置排序，从后往前插入，避免位置偏移
+    insert_points.sort(key=lambda x: x[0], reverse=True)
+    
+    # 执行插入
+    for pos, img_html in insert_points:
+        if pos >= len(paragraphs):
+            paragraphs.append(img_html)
+        else:
+            paragraphs.insert(pos, img_html)
+    
+    # 用\n\n连接段落，UEditor能识别
+    return {'content': '\n\n'.join(paragraphs), 'images': result_images}
 
 
 def publish_article(product_id, website_ids, title, content, model_id, title_template_id, content_template_id, user_id):
     task_id = str(uuid.uuid4())
     records = []
     websites = {}
+
+    # 获取关联产品的图片并插入内容
+    images = Image.query.join(Image.products).filter(
+        Image.status == 0,
+        Product.id == product_id
+    ).all()
+    content_with_images = insert_images(content, images)
+    content = content_with_images['content']
 
     for website_id in website_ids:
         website = Website.query.get(website_id)
@@ -162,7 +133,7 @@ def publish_article(product_id, website_ids, title, content, model_id, title_tem
         try:
             website = websites.get(record.website_id)
             if website:
-                result = publish_to_website(record, website)
+                result = publish_to_website(record, website, title, content)
                 record.status = 'success'
                 record.result_url = result.get('url')
                 record.publish_time = datetime.now()
@@ -178,8 +149,125 @@ def publish_article(product_id, website_ids, title, content, model_id, title_tem
     return {'taskId': task_id, 'records': [{'id': r.id, 'websiteId': r.website_id, 'status': r.status} for r in records]}
 
 
-def publish_to_website(record, website):
-    import time
-    time.sleep(1)
+def publish_to_website(record, website, title, content):
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-    return {'url': f'https://{website.code}.com/article/{record.id}'}
+    try:
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=False)
+                context = browser.new_context()
+                page = context.new_page()
+                page.set_default_timeout(120000)
+                # 必须先登录，登录成功后需要再访问发布页
+                if website.login_url:
+                    try:
+                        page.goto(website.login_url, timeout=60000, wait_until="domcontentloaded")
+                        time.sleep(3)
+
+                        if website.username_selector and website.username:
+                            try:
+                                page.wait_for_selector(website.username_selector, timeout=15000)
+                                page.fill(website.username_selector, website.username)
+                            except Exception as e:
+                                print(f"Warning: Failed to fill username: {e}")
+
+                        if website.password_selector and website.password:
+                            try:
+                                page.wait_for_selector(website.password_selector, timeout=15000)
+                                page.fill(website.password_selector, website.password)
+                            except Exception as e:
+                                print(f"Warning: Failed to fill password: {e}")
+
+                        if website.login_button_selector:
+                            try:
+                                page.wait_for_selector(website.login_button_selector, timeout=15000)
+                                page.click(website.login_button_selector)
+                                time.sleep(5)
+                            except Exception as e:
+                                print(f"Warning: Failed to click login button: {e}")
+                    except Exception as e:
+                        print(f"登录流程失败: {e}")
+
+                # 登录后访问发布页
+                if website.publish_url:
+                    try:
+                        page.goto(website.publish_url, timeout=60000, wait_until="load")
+                        time.sleep(5)
+                    except Exception as e:
+                        print(f"访问发布页失败: {e}")
+
+                # 填写标题
+                if website.title_selector:
+                    try:
+                        page.wait_for_selector(website.title_selector, timeout=15000)
+                        page.fill(website.title_selector, title)
+                    except Exception as e:
+                        print(f"Warning: Failed to fill title: {e}")
+
+                # 填写内容 - UEditor编辑器特殊处理
+                if website.content_selector:
+                    try:
+                        # UEditor需要用JavaScript设置内容
+                        page.evaluate(f"""
+                            (function() {{
+                                // 方法1: 尝试通过UEditor API
+                                if (window.UE && window.UE.instants) {{
+                                    for (var key in window.UE.instants) {{
+                                        var editor = window.UE.instants[key];
+                                        if (editor) {{
+                                            editor.setContent({json.dumps(content)});
+                                            return;
+                                        }}
+                                    }}
+                                }}
+                                // 方法2: 直接设置textarea
+                                var textarea = document.querySelector('{website.content_selector}');
+                                if (textarea) {{
+                                    textarea.value = {json.dumps(content)};
+                                    // 触发UEditor同步
+                                    var editorEl = document.querySelector('#editor_Content');
+                                    if (editorEl && editorEl.getAttribute('editor')) {{
+                                        var editor = window.UE.instants['ueditorInstant0'];
+                                        if (editor) {{
+                                            editor.setContent({json.dumps(content)});
+                                        }}
+                                    }}
+                                }}
+                            }})();
+                        """)
+                        print("UEditor内容已填写")
+                    except Exception as e:
+                        print(f"填写内容失败: {e}")
+
+                # 选择分类
+                if website.category_selector:
+                    try:
+                        page.wait_for_selector(website.category_selector, timeout=15000)
+                        page.select_option(website.category_selector, '1')
+                    except Exception as e:
+                        print(f"Warning: Failed to select category: {e}")
+
+                # 点击发布
+                if website.publish_button_selector:
+                    try:
+                        page.wait_for_selector(website.publish_button_selector, timeout=15000)
+                        page.click(website.publish_button_selector)
+                        time.sleep(5)
+                    except Exception as e:
+                        print(f"Warning: Failed to click publish button: {e}")
+
+                result_url = page.url
+                browser.close()
+
+                return {'url': result_url}
+
+            except PlaywrightTimeoutError:
+                browser.close()
+                raise Exception('页面加载超时')
+            except Exception as e:
+                browser.close()
+                raise Exception(f'浏览器操作失败: {str(e)}')
+
+    except Exception as e:
+        raise Exception(f'浏览器自动化发布失败: {str(e)}')
