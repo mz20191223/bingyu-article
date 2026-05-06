@@ -142,6 +142,7 @@ class Product(db.Model):
     url = db.Column(db.String(500))
     description = db.Column(db.Text)
     status = db.Column(db.Integer, default=0)
+    is_default = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -186,6 +187,27 @@ title_template_product = db.Table('title_template_product',
     db.Column('template_id', db.Integer, db.ForeignKey('title_prompt_templates.id'), primary_key=True),
     db.Column('product_id', db.Integer, db.ForeignKey('products.id'), primary_key=True)
 )
+
+template_product = db.Table('template_product',
+    db.Column('template_id', db.Integer, db.ForeignKey('prompt_templates.id'), primary_key=True),
+    db.Column('product_id', db.Integer, db.ForeignKey('products.id'), primary_key=True)
+)
+
+
+class PromptTemplate(db.Model):
+    __tablename__ = 'prompt_templates'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100), nullable=False)
+    prompt_content = db.Column(db.Text, nullable=False)
+    required_paragraphs = db.Column(db.Integer, default=5)
+    business_type = db.Column(db.String(50))
+    is_default = db.Column(db.Integer, default=0)
+    status = db.Column(db.Integer, default=0)
+    create_time = db.Column(db.DateTime, default=datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    products = db.relationship('Product', secondary=template_product, backref=db.backref('prompt_templates', lazy='dynamic'))
 
 
 class ContentPromptTemplate(db.Model):
@@ -256,6 +278,7 @@ class Website(db.Model):
     category_selector = db.Column(db.String(200))
     publish_button_selector = db.Column(db.String(200))
     status = db.Column(db.Integer, default=0)
+    is_default = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 

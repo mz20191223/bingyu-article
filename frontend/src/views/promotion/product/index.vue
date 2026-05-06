@@ -22,6 +22,12 @@
             <el-tag :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '启用' : '禁用' }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="isDefault" label="发布默认" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.isDefault === 1" type="warning">默认</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="180" />
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
@@ -53,6 +59,9 @@
         <el-form-item label="状态">
           <el-switch v-model="form.status" :active-value="0" :inactive-value="1" />
         </el-form-item>
+        <el-form-item label="发布默认">
+          <el-switch v-model="form.isDefault" :active-value="1" :inactive-value="0" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -75,7 +84,7 @@ const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
-const form = reactive({ id: null, name: '', url: '', status: 1 })
+const form = reactive({ id: null, name: '', url: '', status: 1, isDefault: 0 })
 
 const rules = {
   name: [{ required: true, message: '请输入产品名称', trigger: 'blur' }]
@@ -97,13 +106,13 @@ const loadData = async () => {
 }
 
 const handleAdd = () => {
-  Object.assign(form, { id: null, name: '', url: '', status: 1 })
+  Object.assign(form, { id: null, name: '', url: '', status: 1, isDefault: 0 })
   dialogTitle.value = '新增产品'
   dialogVisible.value = true
 }
 
 const handleEdit = (row) => {
-  Object.assign(form, { id: row.id, name: row.name, url: row.url, status: row.status })
+  Object.assign(form, { id: row.id, name: row.name, url: row.url, status: row.status, isDefault: row.isDefault || 0 })
   dialogTitle.value = '编辑产品'
   dialogVisible.value = true
 }

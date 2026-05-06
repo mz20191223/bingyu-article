@@ -4,100 +4,105 @@
       <template #header>
         <div class="card-header">
           <span>文章发布</span>
-          <el-button type="success" @click="showImportDialog = true">导入Excel</el-button>
+          <el-radio-group v-model="mode" @change="handleModeChange" style="margin-right: 20px">
+            <el-radio-button value="direct">直接录入</el-radio-button>
+            <el-radio-button value="excel">导入Excel</el-radio-button>
+          </el-radio-group>
         </div>
       </template>
 
-      <el-steps :active="currentStep" finish-status="success" style="margin-bottom: 30px">
-        <el-step title="选择配置" />
-        <el-step title="生成内容" />
-        <el-step title="发布文章" />
-      </el-steps>
+      <div v-show="mode === 'direct'">
+        <el-table :data="tableData" border style="width: 100%" v-loading="tableLoading">
+          <el-table-column label="产品" width="150">
+            <template #default="{ row, $index }">
+              <el-select v-model="row.productId" placeholder="请选择产品" @change="handleProductChange($index)">
+                <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="目标网站" width="250">
+            <template #default="{ row }">
+              <el-select v-model="row.websiteIds" placeholder="请选择网站" multiple collapse-tags collapse-tags-limit="2">
+                <el-option v-for="w in websites" :key="w.id" :label="w.name" :value="w.id" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="AI生成" width="100">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" @click="handleGenerate(row)" :loading="row.generating" :disabled="!row.productId">
+                AI生成
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="标题">
+            <template #default="{ row }">
+              <el-input v-model="row.title" placeholder="请输入标题（不超过100字符）" maxlength="100" show-word-limit />
+            </template>
+          </el-table-column>
+          <el-table-column label="内容" width="250">
+            <template #default="{ row }">
+              <el-input v-model="row.content" type="textarea" :rows="1" placeholder="请输入或粘贴内容" />
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="80" fixed="right">
+            <template #default="{ $index }">
+              <el-button type="danger" size="small" link @click="handleDeleteRow($index)">删除</el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="发布进度" width="200" fixed="right">
+            <template #default="{ row }">
+              <div v-if="row.publishStatus" class="publish-status">
+                <span v-if="row.publishStatus === 'pending'" class="status-pending">○ 待发布</span>
+                <span v-else-if="row.publishStatus === 'publishing'" class="status-publishing">
+                  <el-icon class="is-loading"><Loading /></el-icon> {{ row.publishMsg || '发布中...' }}
+                </span>
+                <span v-else-if="row.publishStatus === 'success'" class="status-success">✓ {{ row.publishMsg }}</span>
+                <span v-else-if="row.publishStatus === 'failed'" class="status-failed">
+                  <el-tooltip :content="row.errorMsg || '发布失败'" placement="top">
+                    <span>✗ {{ row.publishMsg }}</span>
+                  </el-tooltip>
+                </span>
+              </div>
+              <span v-else class="status-pending">○ 待发布</span>
+            </template>
+          </el-table-column>
+        </el-table>
 
-      <div v-show="currentStep === 0">
-        <el-form label-width="120px">
-          <el-form-item label="选择产品">
-            <el-select v-model="form.productId" placeholder="请选择产品" style="width: 400px">
-              <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="目标网站">
-            <el-checkbox-group v-model="form.websiteIds">
-              <el-checkbox v-for="w in websites" :key="w.id" :label="w.id">{{ w.name }}</el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-          <el-form-item label="内容模板">
-            <el-select v-model="form.contentTemplateId" placeholder="请选择内容模板" style="width: 400px">
-              <el-option v-for="t in contentTemplates" :key="t.id" :label="t.name" :value="t.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="标题模板">
-            <el-select v-model="form.titleTemplateId" placeholder="请选择标题模板" style="width: 400px">
-              <el-option v-for="t in titleTemplates" :key="t.id" :label="t.name" :value="t.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="AI模型">
-            <el-select v-model="form.modelId" placeholder="请选择AI模型" style="width: 400px">
-              <el-option v-for="m in models" :key="m.id" :label="m.name" :value="m.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="nextStep" :disabled="!canNext">下一步（使用AI生成）</el-button>
-            <el-button @click="goToManualInput">直接录入（手动编写）</el-button>
-          </el-form-item>
-        </el-form>
+        <div style="margin-top: 20px; display: flex; justify-content: space-between;">
+          <el-button type="primary" @click="handleAddRow">+ 添加一行</el-button>
+          <el-button type="success" size="large" @click="handlePublishAll" :loading="publishingAll">发布全部</el-button>
+        </div>
+
+        <div v-if="publishSummary" style="margin-top: 20px;">
+          <el-alert :type="publishSummary.type" :title="publishSummary.title" :description="publishSummary.desc" show-icon :closable="false" />
+        </div>
       </div>
 
-      <div v-show="currentStep === 1">
-        <el-form label-width="120px">
-          <el-form-item label="文章标题">
-            <el-input v-model="article.title" type="textarea" :rows="2" style="width: 600px" placeholder="请输入文章标题（可手动输入或点击AI生成）" />
-          </el-form-item>
-          <el-form-item label="文章内容">
-            <el-input v-model="article.content" type="textarea" :rows="15" style="width: 600px" placeholder="请输入文章内容（可手动输入或点击AI生成）" />
-          </el-form-item>
-          <el-form-item>
-            <el-button @click="currentStep = 0">上一步</el-button>
-            <el-button type="primary" @click="generateArticle" :loading="generating">AI生成</el-button>
-            <el-button type="success" @click="goToPublish">发布文章</el-button>
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <div v-show="currentStep === 2">
-        <el-result icon="success" title="发布成功" sub-title="文章已成功发布到目标平台">
-          <template #extra>
-            <el-button type="primary" @click="currentStep = 0">继续发布</el-button>
-            <el-button @click="$router.push('/publish/record')">查看记录</el-button>
+      <div v-show="mode === 'excel'">
+        <div style="margin-bottom: 20px">
+          <el-link type="primary" :href="'/api/publish/templates/download'" target="_blank">下载模板文件</el-link>
+        </div>
+        <el-upload
+          ref="uploadRef"
+          class="upload-demo"
+          drag
+          :auto-upload="false"
+          :limit="1"
+          accept=".xlsx"
+          :on-change="handleFileChange"
+        >
+          <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+          <div class="el-upload__text">拖拽文件到此处 或 <em>点击选择文件</em></div>
+          <template #tip>
+            <div class="el-upload__tip">只能上传xlsx文件，建议不超过10MB</div>
           </template>
-        </el-result>
+        </el-upload>
+        <div style="margin-top: 20px">
+          <el-button @click="mode = 'direct'">取消</el-button>
+          <el-button type="primary" @click="handleImportExcel" :loading="importing">确认导入</el-button>
+        </div>
       </div>
     </el-card>
-
-    <el-dialog v-model="showImportDialog" title="导入Excel" width="900px">
-      <div style="margin-bottom: 20px">
-        <el-link type="primary" :href="'/api/templates/download'" target="_blank">下载模板文件</el-link>
-      </div>
-      <el-upload
-        ref="uploadRef"
-        class="upload-demo"
-        drag
-        :auto-upload="false"
-        :limit="1"
-        accept=".xlsx"
-        :on-change="handleFileChange"
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">拖拽文件到此处 或 <em>点击选择文件</em></div>
-        <template #tip>
-          <div class="el-upload__tip">只能上传xlsx文件，建议不超过10MB</div>
-        </template>
-      </el-upload>
-      <template #footer>
-        <el-button @click="showImportDialog = false">取消</el-button>
-        <el-button type="primary" @click="importExcel" :loading="importing">确认导入</el-button>
-      </template>
-    </el-dialog>
 
     <el-dialog v-model="showPreviewDialog" title="导入预览" width="1000px">
       <el-table :data="importList" border style="width: 100%">
@@ -124,113 +129,215 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { UploadFilled } from '@element-plus/icons-vue'
+import { UploadFilled, Loading } from '@element-plus/icons-vue'
 import api from '@/api'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
 
-const currentStep = ref(0)
-const generating = ref(false)
+const mode = ref('direct')
+const tableData = ref([])
+const tableLoading = ref(false)
+const publishingAll = ref(false)
+const publishSummary = ref(null)
+const showPreviewDialog = ref(false)
 const importing = ref(false)
 const publishing = ref(false)
-const showImportDialog = ref(false)
-const showPreviewDialog = ref(false)
 const uploadRef = ref(null)
 const selectedFile = ref(null)
 const importList = ref([])
 
-const form = reactive({
-  productId: null,
-  websiteIds: [],
-  contentTemplateId: null,
-  titleTemplateId: null,
-  modelId: null
-})
-
-const article = reactive({
-  title: '',
-  content: ''
-})
-
 const products = ref([])
 const websites = ref([])
-const contentTemplates = ref([])
-const titleTemplates = ref([])
-const models = ref([])
 
 const errorCount = computed(() => importList.value.filter(i => i.error).length)
 
-const canNext = computed(() => {
-  return form.productId && form.websiteIds.length > 0
-})
-
 const loadData = async () => {
   try {
-    const [pRes, wRes, cRes, tRes, mRes] = await Promise.all([
+    const [pRes, wRes] = await Promise.all([
       api.get('/products', { params: { pageSize: 100, status: 0 } }),
-      api.get('/websites', { params: { pageSize: 100, status: 0 } }),
-      api.get('/content-templates', { params: { pageSize: 100, status: 0 } }),
-      api.get('/title-templates', { params: { pageSize: 100, status: 0 } }),
-      api.get('/models', { params: { pageSize: 100, status: 0 } })
+      api.get('/websites', { params: { pageSize: 100, status: 0 } })
     ])
     products.value = pRes.data.list || []
     websites.value = wRes.data.list || []
-    contentTemplates.value = cRes.data.list || []
-    titleTemplates.value = tRes.data.list || []
-    models.value = mRes.data.list || []
   } catch (error) {
     console.error('Failed to load data:', error)
   }
 }
 
-const nextStep = () => {
-  currentStep.value = 1
+const handleProductChange = (index) => {
+  console.log('Product changed at index:', index)
 }
 
-const goToManualInput = () => {
-  currentStep.value = 1
-  ElMessage.info('请在下方输入文章标题和内容')
+const handleAddRow = () => {
+  tableData.value.push({
+    id: Date.now(),
+    productId: null,
+    websiteIds: [],
+    title: '',
+    content: '',
+    generating: false,
+    publishStatus: 'pending',
+    publishMsg: '',
+    errorMsg: ''
+  })
 }
 
-const generateArticle = async () => {
-  generating.value = true
-  try {
-    const res = await api.post('/publish/generate', {
-      productId: form.productId,
-      websiteIds: form.websiteIds,
-      contentTemplateId: form.contentTemplateId,
-      titleTemplateId: form.titleTemplateId,
-      modelId: form.modelId
-    })
-    article.title = res.data.title
-    article.content = res.data.content
-    ElMessage.success('生成成功')
-  } catch (error) {
-    ElMessage.error(error.message || '生成失败')
-  } finally {
-    generating.value = false
-  }
+const handleDeleteRow = (index) => {
+  tableData.value.splice(index, 1)
 }
 
-const goToPublish = async () => {
-  if (!article.title || !article.content) {
-    ElMessage.warning('请输入文章标题和内容（可手动输入或点击AI生成）')
+const handleGenerate = async (row) => {
+  if (!row.productId) {
+    ElMessage.warning('请先选择产品')
     return
   }
+
+  row.generating = true
+  row.generatingMsg = '正在获取模板...'
+
   try {
-    await api.post('/publish/submit', {
-      productId: form.productId,
-      websiteIds: form.websiteIds,
-      title: article.title,
-      content: article.content,
-      modelId: form.modelId,
-      titleTemplateId: form.titleTemplateId,
-      contentTemplateId: form.contentTemplateId
+    row.generatingMsg = '正在调用AI生成...'
+
+    const res = await api.post('/publish/generate', {
+      productId: row.productId,
+      websiteIds: row.websiteIds.length > 0 ? row.websiteIds : []
     })
-    currentStep.value = 2
-    ElMessage.success('发布成功')
+
+    if (res.code === 200 && res.data) {
+      row.title = res.data.title || ''
+      row.content = res.data.content || ''
+      ElMessage.success('生成成功')
+    } else {
+      ElMessage.error(res.msg || '生成失败')
+    }
   } catch (error) {
-    ElMessage.error(error.message || '发布失败')
+    console.error('Generate error:', error)
+    ElMessage.error(error.message || '生成失败')
+  } finally {
+    row.generating = false
+    row.generatingMsg = ''
+  }
+}
+
+const validateRow = (row) => {
+  if (!row.productId) {
+    return '请选择产品'
+  }
+  if (!row.websiteIds || row.websiteIds.length === 0) {
+    return '请选择目标网站'
+  }
+  if (!row.title) {
+    return '请输入标题'
+  }
+  if (row.title.length > 100) {
+    return '标题不超过100字符'
+  }
+  if (!row.content) {
+    return '请输入内容'
+  }
+  return null
+}
+
+const handlePublishAll = async () => {
+  const validRows = tableData.value.filter(row => row.productId && row.title && row.content)
+  if (validRows.length === 0) {
+    ElMessage.warning('没有可发布的文章')
+    return
+  }
+
+  const errors = tableData.value.map((row, index) => {
+    const error = validateRow(row)
+    return error ? { index: index + 1, error } : null
+  }).filter(e => e)
+
+  if (errors.length > 0) {
+    ElMessageBox.confirm(
+      `有 ${errors.length} 行数据不完整，是否只发布有效的 ${validRows.length} 行？`,
+      '提示',
+      { type: 'warning' }
+    ).then(() => {
+      confirmPublish(validRows)
+    }).catch(() => {})
+  } else {
+    confirmPublish(validRows)
+  }
+}
+
+const confirmPublish = async (validRows) => {
+  try {
+    await ElMessageBox.confirm(
+      `即将发布 ${validRows.length} 篇文章到目标网站，确认继续？`,
+      '确认发布',
+      { type: 'warning' }
+    )
+    doPublishAll(validRows)
+  } catch {
+  }
+}
+
+const doPublishAll = async (rows) => {
+  publishingAll.value = true
+  publishSummary.value = null
+
+  let successCount = 0
+  let failCount = 0
+
+  for (const row of rows) {
+    row.publishStatus = 'publishing'
+    row.publishMsg = '准备发布...'
+
+    try {
+      for (let i = 0; i < row.websiteIds.length; i++) {
+        const websiteId = row.websiteIds[i]
+        const website = websites.value.find(w => w.id === websiteId)
+        row.publishMsg = `正在发布到${website?.name || '网站'}...`
+
+        const res = await api.post('/publish/submit', {
+          productId: row.productId,
+          websiteIds: [websiteId],
+          title: row.title,
+          content: row.content
+        })
+
+        if (res.code === 200) {
+          row.publishMsg = `${website?.name || '网站'}发布成功`
+          row.publishStatus = 'success'
+          successCount++
+        } else {
+          row.publishStatus = 'failed'
+          row.errorMsg = res.msg || '发布失败'
+          row.publishMsg = `${website?.name || '网站'}失败`
+          failCount++
+        }
+      }
+    } catch (error) {
+      row.publishStatus = 'failed'
+      row.errorMsg = error.message || '发布失败'
+      row.publishMsg = '发布失败'
+      failCount++
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+
+  publishingAll.value = false
+  publishSummary.value = {
+    type: failCount > 0 ? 'warning' : 'success',
+    title: `发布完成：成功 ${successCount} 篇，失败 ${failCount} 篇`,
+    desc: ''
+  }
+}
+
+const handleModeChange = () => {
+  if (mode.value === 'excel') {
+    ElMessageBox.confirm('切换到导入模式将清空当前录入数据，是否继续？', '提示', {
+      type: 'warning'
+    }).then(() => {
+      tableData.value = []
+      publishSummary.value = null
+    }).catch(() => {
+      mode.value = 'direct'
+    })
   }
 }
 
@@ -238,7 +345,7 @@ const handleFileChange = (file) => {
   selectedFile.value = file.raw
 }
 
-const importExcel = async () => {
+const handleImportExcel = async () => {
   if (!selectedFile.value) {
     ElMessage.warning('请选择文件')
     return
@@ -319,8 +426,7 @@ const importExcel = async () => {
     }
 
     importList.value = rows
-    showImportDialog.value = false
-    showPreviewDialog.value = true
+    showPreviewDialog.value = false
     uploadRef.value?.clearFiles()
   } catch (error) {
     console.error('Import error:', error)
@@ -348,10 +454,7 @@ const startBatchPublish = async () => {
           productId: item.productId,
           websiteIds: [website.id],
           title: item.title,
-          content: item.content,
-          modelId: form.modelId,
-          titleTemplateId: form.titleTemplateId,
-          contentTemplateId: form.contentTemplateId
+          content: item.content
         })
         successCount++
       }
@@ -364,11 +467,30 @@ const startBatchPublish = async () => {
   publishing.value = false
   showPreviewDialog.value = false
   ElMessage.success(`发布完成: 成功 ${successCount} 篇, 失败 ${failCount} 篇`)
-  currentStep.value = 2
 }
 
-onMounted(() => {
-  loadData()
+const initTable = () => {
+  if (tableData.value.length === 0) {
+    const defaultProduct = products.value.find(p => p.isDefault === 1) || products.value[0]
+    const defaultWebsites = websites.value.filter(w => w.isDefault === 1)
+    const selectedWebsites = defaultWebsites.length > 0 ? defaultWebsites.map(w => w.id) : (websites.value[0] ? [websites.value[0].id] : [])
+    tableData.value.push({
+      id: Date.now(),
+      productId: defaultProduct?.id || null,
+      websiteIds: selectedWebsites,
+      title: '',
+      content: '',
+      generating: false,
+      publishStatus: 'pending',
+      publishMsg: '',
+      errorMsg: ''
+    })
+  }
+}
+
+onMounted(async () => {
+  await loadData()
+  initTable()
 })
 </script>
 
@@ -380,5 +502,24 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.publish-status {
+  font-size: 13px;
+}
+.status-pending {
+  color: #909399;
+}
+.status-publishing {
+  color: #409eff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.status-success {
+  color: #67c23a;
+}
+.status-failed {
+  color: #f56c6c;
+  cursor: pointer;
 }
 </style>

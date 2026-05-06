@@ -39,6 +39,7 @@ def get_websites():
             'categorySelector': w.category_selector,
             'publishButtonSelector': w.publish_button_selector,
             'status': w.status,
+            'isDefault': w.is_default,
             'createTime': w.create_time.strftime('%Y-%m-%d %H:%M:%S') if w.create_time else None
         })
 
@@ -153,6 +154,10 @@ def update_website(website_id):
         website.publish_button_selector = data['publishButtonSelector']
     if 'status' in data:
         website.status = data['status']
+    if 'isDefault' in data:
+        if data['isDefault'] == 1:
+            Website.query.filter(Website.id != website_id).update({'is_default': 0})
+        website.is_default = data['isDefault']
 
     db.session.commit()
 
@@ -178,3 +183,39 @@ def delete_website(website_id):
     db.session.commit()
 
     return jsonify({'code': 200, 'msg': '删除成功', 'data': None})
+
+
+@bp.route('/default', methods=['GET'])
+@token_required
+def get_default_website():
+    website = Website.query.filter_by(is_default=1, status=0).first()
+    if not website:
+        website = Website.query.filter_by(status=0).first()
+    if website:
+        return jsonify({'code': 200, 'msg': 'success', 'data': {'id': website.id, 'name': website.name}})
+    return jsonify({'code': 200, 'msg': 'success', 'data': None})
+
+
+@bp.route('/default/all', methods=['GET'])
+@token_required
+def get_default_websites():
+    websites = Website.query.filter_by(is_default=1, status=0).all()
+    if not websites:
+        websites = Website.query.filter_by(status=0).all()
+    if websites:
+        return jsonify({'code': 200, 'msg': 'success', 'data': [{'id': w.id, 'name': w.name} for w in websites]})
+    return jsonify({'code': 200, 'msg': 'success', 'data': []})
+
+
+@bp.route('/<int:website_id>/default', methods=['PUT'])
+@token_required
+def set_default_website(website_id):
+    website = Website.query.get(website_id)
+    if not website:
+        return jsonify({'code': 404, 'msg': '网站不存在', 'data': None})
+
+    Website.query.update({'is_default': 0})
+    website.is_default = 1
+    db.session.commit()
+
+    return jsonify({'code': 200, 'msg': '设置成功', 'data': None})

@@ -30,6 +30,7 @@ def get_products():
             'name': p.name,
             'url': p.url,
             'status': p.status,
+            'isDefault': p.is_default,
             'createTime': p.create_time.strftime('%Y-%m-%d %H:%M:%S') if p.create_time else None
         })
 
@@ -50,7 +51,8 @@ def get_product(product_id):
             'id': product.id,
             'name': product.name,
             'url': product.url,
-            'status': product.status
+            'status': product.status,
+            'isDefault': product.is_default
         }
     })
 
@@ -90,6 +92,10 @@ def update_product(product_id):
         product.url = data['url']
     if 'status' in data:
         product.status = data['status']
+    if 'isDefault' in data:
+        if data['isDefault'] == 1:
+            Product.query.filter(Product.id != product_id).update({'is_default': 0})
+        product.is_default = data['isDefault']
 
     db.session.commit()
 
@@ -129,3 +135,28 @@ def update_product_status(product_id):
     db.session.commit()
 
     return jsonify({'code': 200, 'msg': '状态更新成功', 'data': None})
+
+
+@bp.route('/default', methods=['GET'])
+@token_required
+def get_default_product():
+    product = Product.query.filter_by(is_default=1, status=0).first()
+    if not product:
+        product = Product.query.filter_by(status=0).first()
+    if product:
+        return jsonify({'code': 200, 'msg': 'success', 'data': {'id': product.id, 'name': product.name}})
+    return jsonify({'code': 200, 'msg': 'success', 'data': None})
+
+
+@bp.route('/<int:product_id>/default', methods=['PUT'])
+@token_required
+def set_default_product(product_id):
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({'code': 404, 'msg': '产品不存在', 'data': None})
+
+    Product.query.update({'is_default': 0})
+    product.is_default = 1
+    db.session.commit()
+
+    return jsonify({'code': 200, 'msg': '设置成功', 'data': None})

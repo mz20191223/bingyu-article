@@ -86,6 +86,11 @@ const routes = [
         path: 'ai-config/title-template',
         name: 'TitleTemplate',
         component: () => import('@/views/ai-config/title-template/index.vue')
+      },
+      {
+        path: 'ai-config/prompt-template',
+        name: 'PromptTemplate',
+        component: () => import('@/views/ai-config/prompt-template/index.vue')
       }
     ]
   }

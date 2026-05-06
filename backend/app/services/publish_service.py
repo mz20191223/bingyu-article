@@ -253,7 +253,7 @@ def publish_to_website(record, website, title, content):
                     try:
                         page.wait_for_selector(website.publish_button_selector, timeout=15000)
                         page.click(website.publish_button_selector)
-                        time.sleep(5)
+                        time.sleep(8)
                     except Exception as e:
                         print(f"Warning: Failed to click publish button: {e}")
 

@@ -20,6 +20,12 @@
             <el-tag :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '启用' : '禁用' }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="isDefault" label="发布默认" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.isDefault === 1" type="warning">默认</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
             <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
@@ -96,6 +102,7 @@
         </el-row>
 
         <el-form-item label="状态"><el-switch v-model="form.status" :active-value="0" :inactive-value="1" /></el-form-item>
+        <el-form-item label="发布默认"><el-switch v-model="form.isDefault" :active-value="1" :inactive-value="0" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -127,7 +134,8 @@ const form = reactive({
   contentSelector: '',
   categorySelector: '',
   publishButtonSelector: '',
-  status: 1 
+  status: 1,
+  isDefault: 0 
 })
 const rules = { 
   name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }], 
@@ -135,8 +143,8 @@ const rules = {
 }
 
 const loadData = async () => { loading.value = true; try { const res = await api.get('/websites', { params: { page: pagination.page, pageSize: pagination.pageSize } }); tableData.value = res.data.list; pagination.total = res.data.total } catch (error) { ElMessage.error('加载失败') } finally { loading.value = false } }
-const handleAdd = () => { Object.assign(form, { id: null, name: '', code: '', loginUrl: '', publishUrl: '', username: '', password: '', cookie: '', usernameSelector: '', passwordSelector: '', loginButtonSelector: '', titleSelector: '', contentSelector: '', categorySelector: '', publishButtonSelector: '', status: 1 }); dialogTitle.value = '新增网站'; dialogVisible.value = true }
-const handleEdit = async (row) => { try { const res = await api.get(`/websites/${row.id}`); if (res && res.data) { Object.assign(form, { id: res.data.id, name: res.data.name, code: res.data.code, loginUrl: res.data.loginUrl || '', publishUrl: res.data.publishUrl || '', username: res.data.username || '', password: res.data.password || '', cookie: res.data.cookie || '', usernameSelector: res.data.usernameSelector || '', passwordSelector: res.data.passwordSelector || '', loginButtonSelector: res.data.loginButtonSelector || '', titleSelector: res.data.titleSelector || '', contentSelector: res.data.contentSelector || '', categorySelector: res.data.categorySelector || '', publishButtonSelector: res.data.publishButtonSelector || '', status: res.data.status }); dialogTitle.value = '编辑网站'; dialogVisible.value = true } else { ElMessage.error('获取网站详情失败') } } catch (error) { ElMessage.error('获取网站详情失败') } }
+const handleAdd = () => { Object.assign(form, { id: null, name: '', code: '', loginUrl: '', publishUrl: '', username: '', password: '', cookie: '', usernameSelector: '', passwordSelector: '', loginButtonSelector: '', titleSelector: '', contentSelector: '', categorySelector: '', publishButtonSelector: '', status: 1, isDefault: 0 }); dialogTitle.value = '新增网站'; dialogVisible.value = true }
+const handleEdit = async (row) => { try { const res = await api.get(`/websites/${row.id}`); if (res && res.data) { Object.assign(form, { id: res.data.id, name: res.data.name, code: res.data.code, loginUrl: res.data.loginUrl || '', publishUrl: res.data.publishUrl || '', username: res.data.username || '', password: res.data.password || '', cookie: res.data.cookie || '', usernameSelector: res.data.usernameSelector || '', passwordSelector: res.data.passwordSelector || '', loginButtonSelector: res.data.loginButtonSelector || '', titleSelector: res.data.titleSelector || '', contentSelector: res.data.contentSelector || '', categorySelector: res.data.categorySelector || '', publishButtonSelector: res.data.publishButtonSelector || '', status: res.data.status, isDefault: res.data.isDefault || 0 }); dialogTitle.value = '编辑网站'; dialogVisible.value = true } else { ElMessage.error('获取网站详情失败') } } catch (error) { ElMessage.error('获取网站详情失败') } }
 const handleDelete = async (row) => { try { await ElMessageBox.confirm('确定删除?', '提示', { type: 'warning' }); await api.delete(`/websites/${row.id}`); ElMessage.success('删除成功'); loadData() } catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') } }
 const handleSubmit = async () => { 
   if (!formRef.value) return; 
@@ -158,7 +166,8 @@ const handleSubmit = async () => {
           contentSelector: form.contentSelector,
           categorySelector: form.categorySelector,
           publishButtonSelector: form.publishButtonSelector,
-          status: form.status 
+          status: form.status,
+          isDefault: form.isDefault
         }; 
         form.id ? await api.put(`/websites/${form.id}`, data) : await api.post('/websites', data); 
         ElMessage.success('操作成功'); 

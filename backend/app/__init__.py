@@ -28,7 +28,7 @@ def create_app(config_name=None):
 
 
 def register_blueprints(app):
-    from app.routes import auth, users, products, images, keywords, templates, models as models_bp, websites, publish, records, logs, roles, dept, menus
+    from app.routes import auth, users, products, images, keywords, templates, prompt_templates, ai, models as models_bp, websites, publish, records, logs, roles, dept, menus
 
     app.register_blueprint(auth.bp, url_prefix='/api/auth')
     app.register_blueprint(users.bp, url_prefix='/api/users')
@@ -37,6 +37,8 @@ def register_blueprints(app):
     app.register_blueprint(keywords.bp, url_prefix='/api/keywords')
     app.register_blueprint(templates.content_bp, url_prefix='/api/content-templates')
     app.register_blueprint(templates.title_bp, url_prefix='/api/title-templates')
+    app.register_blueprint(prompt_templates.prompt_bp, url_prefix='/api/prompt-templates')
+    app.register_blueprint(ai.ai_bp, url_prefix='/api/ai')
     app.register_blueprint(models_bp.bp, url_prefix='/api/models')
     app.register_blueprint(websites.bp, url_prefix='/api/websites')
     app.register_blueprint(publish.bp, url_prefix='/api/publish')
