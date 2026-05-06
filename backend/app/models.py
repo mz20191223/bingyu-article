@@ -163,7 +163,7 @@ class Image(db.Model):
     status = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-    
+
     products = db.relationship('Product', secondary=image_product, backref=db.backref('images', lazy='dynamic'))
 
 
@@ -175,6 +175,17 @@ class Keyword(db.Model):
     status = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+content_template_product = db.Table('content_template_product',
+    db.Column('template_id', db.Integer, db.ForeignKey('content_prompt_templates.id'), primary_key=True),
+    db.Column('product_id', db.Integer, db.ForeignKey('products.id'), primary_key=True)
+)
+
+title_template_product = db.Table('title_template_product',
+    db.Column('template_id', db.Integer, db.ForeignKey('title_prompt_templates.id'), primary_key=True),
+    db.Column('product_id', db.Integer, db.ForeignKey('products.id'), primary_key=True)
+)
 
 
 class ContentPromptTemplate(db.Model):
@@ -193,6 +204,8 @@ class ContentPromptTemplate(db.Model):
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
+    products = db.relationship('Product', secondary=content_template_product, backref=db.backref('content_templates', lazy='dynamic'))
+
 
 class TitlePromptTemplate(db.Model):
     __tablename__ = 'title_prompt_templates'
@@ -205,6 +218,8 @@ class TitlePromptTemplate(db.Model):
     status = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    products = db.relationship('Product', secondary=title_template_product, backref=db.backref('title_templates', lazy='dynamic'))
 
 
 class AIModel(db.Model):

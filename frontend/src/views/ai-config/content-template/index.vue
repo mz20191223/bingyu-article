@@ -11,6 +11,12 @@
       <el-table :data="tableData" v-loading="loading">
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="模板名称" />
+        <el-table-column prop="productNames" label="关联产品" width="150">
+          <template #default="{ row }">
+            <span v-if="row.productNames && row.productNames.length > 0">{{ row.productNames.join(', ') }}</span>
+            <span v-else class="text-gray">未关联</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="businessType" label="业务类型" width="120" />
         <el-table-column prop="isDefault" label="默认" width="80">
           <template #default="{ row }">
@@ -38,6 +44,11 @@
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="模板名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入模板名称" />
+        </el-form-item>
+        <el-form-item label="关联产品">
+          <el-select v-model="form.productIds" placeholder="请选择产品（支持多选）" style="width: 100%" multiple>
+            <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="业务类型">
           <el-input v-model="form.businessType" placeholder="请输入业务类型" />
@@ -80,7 +91,8 @@ const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
-const form = reactive({ id: null, name: '', businessType: '', metaTitle: '', metaDescription: '', keywordPrompt: '', contentPrompt: '', conclusionPrompt: '', status: 1 })
+const products = ref([])
+const form = reactive({ id: null, name: '', productIds: [], businessType: '', metaTitle: '', metaDescription: '', keywordPrompt: '', contentPrompt: '', conclusionPrompt: '', status: 1 })
 const rules = { name: [{ required: true, message: '请输入模板名称', trigger: 'blur' }], contentPrompt: [{ required: true, message: '请输入内容提示词', trigger: 'blur' }] }
 
 const loadData = async () => {
@@ -93,8 +105,15 @@ const loadData = async () => {
   finally { loading.value = false }
 }
 
-const handleAdd = () => { Object.assign(form, { id: null, name: '', businessType: '', metaTitle: '', metaDescription: '', keywordPrompt: '', contentPrompt: '', conclusionPrompt: '', status: 1 }); dialogTitle.value = '新增模板'; dialogVisible.value = true }
-const handleEdit = (row) => { Object.assign(form, { id: row.id, name: row.name, businessType: row.businessType, metaTitle: row.metaTitle, metaDescription: row.metaDescription, keywordPrompt: row.keywordPrompt, contentPrompt: row.contentPrompt, conclusionPrompt: row.conclusionPrompt, status: row.status }); dialogTitle.value = '编辑模板'; dialogVisible.value = true }
+const loadProducts = async () => {
+  try {
+    const res = await api.get('/products')
+    products.value = res.data.list || []
+  } catch (error) { console.error('加载产品失败') }
+}
+
+const handleAdd = () => { Object.assign(form, { id: null, name: '', productIds: [], businessType: '', metaTitle: '', metaDescription: '', keywordPrompt: '', contentPrompt: '', conclusionPrompt: '', status: 1 }); dialogTitle.value = '新增模板'; dialogVisible.value = true }
+const handleEdit = (row) => { Object.assign(form, { id: row.id, name: row.name, productIds: row.productIds || [], businessType: row.businessType, metaTitle: row.metaTitle, metaDescription: row.metaDescription, keywordPrompt: row.keywordPrompt, contentPrompt: row.contentPrompt, conclusionPrompt: row.conclusionPrompt, status: row.status }); dialogTitle.value = '编辑模板'; dialogVisible.value = true }
 const handleDelete = async (row) => {
   try { await ElMessageBox.confirm('确定删除?', '提示', { type: 'warning' }); await api.delete(`/content-templates/${row.id}`); ElMessage.success('删除成功'); loadData() }
   catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
@@ -108,14 +127,14 @@ const handleSubmit = async () => {
   await formRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        const data = { name: form.name, businessType: form.businessType, metaTitle: form.metaTitle, metaDescription: form.metaDescription, keywordPrompt: form.keywordPrompt, contentPrompt: form.contentPrompt, conclusionPrompt: form.conclusionPrompt, status: form.status }
+        const data = { name: form.name, productIds: form.productIds, businessType: form.businessType, metaTitle: form.metaTitle, metaDescription: form.metaDescription, keywordPrompt: form.keywordPrompt, contentPrompt: form.contentPrompt, conclusionPrompt: form.conclusionPrompt, status: form.status }
         form.id ? await api.put(`/content-templates/${form.id}`, data) : await api.post('/content-templates', data)
         ElMessage.success('操作成功'); dialogVisible.value = false; loadData()
       } catch (error) { ElMessage.error(error.message || '操作失败') }
     }
   })
 }
-onMounted(() => { loadData() })
+onMounted(() => { loadData(); loadProducts() })
 </script>
 
 <style scoped>

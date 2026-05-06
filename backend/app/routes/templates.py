@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, g
 from app.routes.auth import token_required
-from app.models import db, ContentPromptTemplate, TitlePromptTemplate, SysOperLog
+from app.models import db, ContentPromptTemplate, TitlePromptTemplate, SysOperLog, Product, content_template_product, title_template_product
 
 content_bp = Blueprint('content_templates', __name__)
 title_bp = Blueprint('title_templates', __name__)
@@ -24,9 +24,14 @@ def get_content_templates():
 
     template_list = []
     for t in templates:
+        product_ids = [p.id for p in t.products]
+        product_names = [p.name for p in t.products]
+        
         template_list.append({
             'id': t.id,
             'name': t.name,
+            'productIds': product_ids,
+            'productNames': product_names,
             'businessType': t.business_type,
             'metaTitle': t.meta_title,
             'metaDescription': t.meta_description,
@@ -65,6 +70,13 @@ def create_content_template():
     db.session.add(template)
     db.session.commit()
 
+    product_ids = data.get('productIds', [])
+    for product_id in product_ids:
+        product = Product.query.get(product_id)
+        if product:
+            template.products.append(product)
+    db.session.commit()
+
     log = SysOperLog(title='内容模板', business_type=1, oper_name=g.username, oper_url='/api/content-templates', oper_param=str(data), status=0)
     db.session.add(log)
     db.session.commit()
@@ -80,11 +92,30 @@ def update_content_template(template_id):
         return jsonify({'code': 404, 'msg': '模板不存在', 'data': None})
 
     data = request.get_json()
-    for key in ['name', 'businessType', 'metaTitle', 'metaDescription', 'keywordPrompt', 'contentPrompt', 'conclusionPrompt']:
-        if key in data:
-            setattr(template, 'content_prompt' if key == 'contentPrompt' else key.lower(), data[key])
+    if 'name' in data:
+        template.name = data['name']
+    if 'businessType' in data:
+        template.business_type = data['businessType']
+    if 'metaTitle' in data:
+        template.meta_title = data['metaTitle']
+    if 'metaDescription' in data:
+        template.meta_description = data['metaDescription']
+    if 'keywordPrompt' in data:
+        template.keyword_prompt = data['keywordPrompt']
+    if 'contentPrompt' in data:
+        template.content_prompt = data['contentPrompt']
+    if 'conclusionPrompt' in data:
+        template.conclusion_prompt = data['conclusionPrompt']
     if 'status' in data:
         template.status = data['status']
+
+    if 'productIds' in data:
+        template.products.clear()
+        product_ids = data['productIds']
+        for product_id in product_ids:
+            product = Product.query.get(product_id)
+            if product:
+                template.products.append(product)
 
     db.session.commit()
 
@@ -144,9 +175,14 @@ def get_title_templates():
 
     template_list = []
     for t in templates:
+        product_ids = [p.id for p in t.products]
+        product_names = [p.name for p in t.products]
+        
         template_list.append({
             'id': t.id,
             'name': t.name,
+            'productIds': product_ids,
+            'productNames': product_names,
             'businessType': t.business_type,
             'titlePrompt': t.title_prompt,
             'isDefault': t.is_default,
@@ -177,6 +213,13 @@ def create_title_template():
     db.session.add(template)
     db.session.commit()
 
+    product_ids = data.get('productIds', [])
+    for product_id in product_ids:
+        product = Product.query.get(product_id)
+        if product:
+            template.products.append(product)
+    db.session.commit()
+
     log = SysOperLog(title='标题模板', business_type=1, oper_name=g.username, oper_url='/api/title-templates', oper_param=str(data), status=0)
     db.session.add(log)
     db.session.commit()
@@ -200,6 +243,14 @@ def update_title_template(template_id):
         template.title_prompt = data['titlePrompt']
     if 'status' in data:
         template.status = data['status']
+
+    if 'productIds' in data:
+        template.products.clear()
+        product_ids = data['productIds']
+        for product_id in product_ids:
+            product = Product.query.get(product_id)
+            if product:
+                template.products.append(product)
 
     db.session.commit()
 
