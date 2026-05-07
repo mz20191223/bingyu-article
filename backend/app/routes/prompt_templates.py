@@ -1,6 +1,7 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify
 from app.routes.auth import token_required
-from app.models import db, PromptTemplate, Product, SysOperLog
+from app.models import db, PromptTemplate, Product
+from datetime import datetime
 
 prompt_bp = Blueprint('prompt_templates', __name__)
 
@@ -9,152 +10,227 @@ prompt_bp = Blueprint('prompt_templates', __name__)
 @token_required
 def get_prompt_templates():
     page = request.args.get('page', 1, type=int)
-    page_size = request.args.get('pageSize', 10, type=int)
-    status = request.args.get('status', type=int)
-
-    query = PromptTemplate.query
-
-    if status is not None:
-        query = query.filter(PromptTemplate.status == status)
-
-    total = query.count()
-    templates = query.offset((page - 1) * page_size).limit(page_size).all()
-
-    template_list = []
-    for t in templates:
-        product_ids = [p.id for p in t.products]
-        product_names = [p.name for p in t.products]
-
-        template_list.append({
-            'id': t.id,
-            'name': t.name,
-            'productIds': product_ids,
-            'productNames': product_names,
-            'promptContent': t.prompt_content,
-            'requiredParagraphs': t.required_paragraphs,
-            'businessType': t.business_type,
-            'isDefault': t.is_default,
-            'status': t.status,
-            'createTime': t.create_time.strftime('%Y-%m-%d %H:%M:%S') if t.create_time else None
+    size = request.args.get('size', 10, type=int)
+    product_id = request.args.get('product_id', type=int)
+    name = request.args.get('name', '')
+    
+    query = PromptTemplate.query.filter_by(status=0).order_by(PromptTemplate.id.desc())
+    
+    if name:
+        query = query.filter(PromptTemplate.name.like(f'%{name}%'))
+    
+    if product_id:
+        query = query.join(PromptTemplate.products).filter(Product.id == product_id)
+    
+    pagination = query.paginate(page=page, per_page=size, error_out=False)
+    
+    result = []
+    for template in pagination.items:
+        product_ids = [p.id for p in template.products]
+        product_names = [p.name for p in template.products]
+        result.append({
+            'id': template.id,
+            'name': template.name,
+            'prompt_content': template.prompt_content,
+            'required_paragraphs': template.required_paragraphs,
+            'business_type': template.business_type,
+            'conclusion_text': template.conclusion_text,
+            'is_default': template.is_default,
+            'status': template.status,
+            'product_ids': product_ids,
+            'product_names': product_names,
+            'create_time': template.create_time.strftime('%Y-%m-%d %H:%M:%S') if template.create_time else None,
+            'update_time': template.update_time.strftime('%Y-%m-%d %H:%M:%S') if template.update_time else None
         })
+    
+    return jsonify({
+        'code': 200,
+        'msg': 'success',
+        'data': {
+            'list': result,
+            'page': page,
+            'pageSize': size,
+            'total': pagination.total
+        }
+    })
 
-    return jsonify({'code': 200, 'msg': 'success', 'data': {'list': template_list, 'total': total, 'page': page, 'pageSize': page_size}})
+
+@prompt_bp.route('/<int:id>', methods=['GET'])
+@token_required
+def get_prompt_template(id):
+    template = PromptTemplate.query.get_or_404(id)
+    product_ids = [p.id for p in template.products]
+    product_names = [p.name for p in template.products]
+    
+    return jsonify({
+        'code': 200,
+        'msg': 'success',
+        'data': {
+            'id': template.id,
+            'name': template.name,
+            'prompt_content': template.prompt_content,
+            'required_paragraphs': template.required_paragraphs,
+            'business_type': template.business_type,
+            'conclusion_text': template.conclusion_text,
+            'is_default': template.is_default,
+            'status': template.status,
+            'product_ids': product_ids,
+            'product_names': product_names,
+            'create_time': template.create_time.strftime('%Y-%m-%d %H:%M:%S') if template.create_time else None,
+            'update_time': template.update_time.strftime('%Y-%m-%d %H:%M:%S') if template.update_time else None
+        }
+    })
 
 
 @prompt_bp.route('', methods=['POST'])
 @token_required
 def create_prompt_template():
     data = request.get_json()
+    
     name = data.get('name')
-    prompt_content = data.get('promptContent')
-
+    prompt_content = data.get('prompt_content')
+    
     if not name or not prompt_content:
         return jsonify({'code': 400, 'msg': '模板名称和提示词内容不能为空', 'data': None})
-
-    template = PromptTemplate(
-        name=name,
-        prompt_content=prompt_content,
-        required_paragraphs=data.get('requiredParagraphs', 5),
-        business_type=data.get('businessType'),
-        is_default=data.get('isDefault', 0),
-        status=data.get('status', 1)
-    )
+    
+    template = PromptTemplate()
+    template.name = name
+    template.prompt_content = prompt_content
+    template.required_paragraphs = data.get('required_paragraphs', 5)
+    template.business_type = data.get('business_type')
+    template.conclusion_text = data.get('conclusion_text')
+    template.is_default = data.get('is_default', 0)
+    
+    if template.is_default == 1:
+        PromptTemplate.query.update({'is_default': 0})
+    
     db.session.add(template)
-    db.session.commit()
-
-    product_ids = data.get('productIds', [])
+    db.session.flush()
+    
+    product_ids = data.get('product_ids', [])
     for product_id in product_ids:
         product = Product.query.get(product_id)
         if product:
             template.products.append(product)
+    
     db.session.commit()
+    
+    return jsonify({
+        'code': 200,
+        'msg': '创建成功',
+        'data': {
+            'id': template.id
+        }
+    })
 
-    log = SysOperLog(title='提示词模板', business_type=1, oper_name=g.username, oper_url='/api/prompt-templates', oper_param=str(data), status=0)
-    db.session.add(log)
-    db.session.commit()
 
-    return jsonify({'code': 200, 'msg': '创建成功', 'data': None})
-
-
-@prompt_bp.route('/<int:template_id>', methods=['PUT'])
+@prompt_bp.route('/<int:id>', methods=['PUT'])
 @token_required
-def update_prompt_template(template_id):
-    template = PromptTemplate.query.get(template_id)
-    if not template:
-        return jsonify({'code': 404, 'msg': '模板不存在', 'data': None})
-
+def update_prompt_template(id):
+    template = PromptTemplate.query.get_or_404(id)
     data = request.get_json()
-    if 'name' in data:
-        template.name = data['name']
-    if 'promptContent' in data:
-        template.prompt_content = data['promptContent']
-    if 'requiredParagraphs' in data:
-        template.required_paragraphs = data['requiredParagraphs']
-    if 'businessType' in data:
-        template.business_type = data['businessType']
-    if 'status' in data:
-        template.status = data['status']
-
-    if 'productIds' in data:
-        template.products.clear()
-        product_ids = data['productIds']
-        for product_id in product_ids:
-            product = Product.query.get(product_id)
-            if product:
-                template.products.append(product)
-
+    
+    template.name = data.get('name', template.name)
+    template.prompt_content = data.get('prompt_content', template.prompt_content)
+    template.required_paragraphs = data.get('required_paragraphs', template.required_paragraphs)
+    template.business_type = data.get('business_type', template.business_type)
+    template.conclusion_text = data.get('conclusion_text', template.conclusion_text)
+    
+    new_is_default = data.get('is_default', template.is_default)
+    if new_is_default == 1 and template.is_default == 0:
+        PromptTemplate.query.update({'is_default': 0})
+    template.is_default = new_is_default
+    
+    product_ids = data.get('product_ids', [])
+    template.products = []
+    for product_id in product_ids:
+        product = Product.query.get(product_id)
+        if product:
+            template.products.append(product)
+    
     db.session.commit()
+    
+    return jsonify({
+        'code': 200,
+        'msg': '更新成功',
+        'data': None
+    })
 
-    log = SysOperLog(title='提示词模板', business_type=2, oper_name=g.username, oper_url=f'/api/prompt-templates/{template_id}', oper_param=str(data), status=0)
-    db.session.add(log)
-    db.session.commit()
 
-    return jsonify({'code': 200, 'msg': '更新成功', 'data': None})
-
-
-@prompt_bp.route('/<int:template_id>', methods=['DELETE'])
+@prompt_bp.route('/<int:id>', methods=['DELETE'])
 @token_required
-def delete_prompt_template(template_id):
-    template = PromptTemplate.query.get(template_id)
-    if not template:
-        return jsonify({'code': 404, 'msg': '模板不存在', 'data': None})
-
-    db.session.delete(template)
+def delete_prompt_template(id):
+    template = PromptTemplate.query.get_or_404(id)
+    template.status = 1
     db.session.commit()
+    
+    return jsonify({
+        'code': 200,
+        'msg': '删除成功',
+        'data': None
+    })
 
-    log = SysOperLog(title='提示词模板', business_type=3, oper_name=g.username, oper_url=f'/api/prompt-templates/{template_id}', status=0)
-    db.session.add(log)
-    db.session.commit()
 
-    return jsonify({'code': 200, 'msg': '删除成功', 'data': None})
-
-
-@prompt_bp.route('/<int:template_id>/default', methods=['PUT'])
+@prompt_bp.route('/default/<int:id>', methods=['PUT'])
 @token_required
-def set_prompt_default(template_id):
-    template = PromptTemplate.query.get(template_id)
-    if not template:
-        return jsonify({'code': 404, 'msg': '模板不存在', 'data': None})
-
+def set_default_template(id):
+    template = PromptTemplate.query.get_or_404(id)
     PromptTemplate.query.update({'is_default': 0})
     template.is_default = 1
     db.session.commit()
+    
+    return jsonify({
+        'code': 200,
+        'msg': '设置默认成功',
+        'data': None
+    })
 
-    return jsonify({'code': 200, 'msg': '设置成功', 'data': None})
 
-
-@prompt_bp.route('/all', methods=['GET'])
+@prompt_bp.route('/default', methods=['GET'])
 @token_required
-def get_all_prompt_templates():
-    templates = PromptTemplate.query.filter_by(status=0).all()
-    template_list = []
-    for t in templates:
-        product_ids = [p.id for p in t.products]
-        product_names = [p.name for p in t.products]
-        template_list.append({
-            'id': t.id,
-            'name': t.name,
-            'productIds': product_ids,
-            'productNames': product_names
+def get_default_template():
+    template = PromptTemplate.query.filter_by(is_default=1, status=0).first()
+    
+    if not template:
+        template = PromptTemplate.query.filter_by(status=0).first()
+    
+    if template:
+        product_ids = [p.id for p in template.products]
+        return jsonify({
+            'code': 200,
+            'msg': 'success',
+            'data': {
+                'id': template.id,
+                'name': template.name,
+                'prompt_content': template.prompt_content,
+                'required_paragraphs': template.required_paragraphs,
+                'business_type': template.business_type,
+                'conclusion_text': template.conclusion_text,
+                'product_ids': product_ids
+            }
         })
-    return jsonify({'code': 200, 'msg': 'success', 'data': template_list})
+    else:
+        return jsonify({
+            'code': 200,
+            'msg': 'success',
+            'data': None
+        })
+
+
+@prompt_bp.route('/options', methods=['GET'])
+@token_required
+def get_template_options():
+    templates = PromptTemplate.query.filter_by(status=0).order_by(PromptTemplate.id.desc()).all()
+    
+    options = []
+    for template in templates:
+        options.append({
+            'value': template.id,
+            'label': template.name
+        })
+    
+    return jsonify({
+        'code': 200,
+        'msg': 'success',
+        'data': options
+    })

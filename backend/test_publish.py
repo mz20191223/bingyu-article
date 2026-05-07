@@ -1,50 +1,77 @@
-import sys
-sys.path.insert(0, '.')
+"""
+测试文章发布功能 - 手动发布模式
+"""
+import requests
 
-from app import create_app
-from app.models import db, Website, Product, Image, PublishRecord
-from app.services.publish_service import insert_images
+base_url = 'http://127.0.0.1:5000'
 
-app = create_app()
-with app.app_context():
-    # 测试用的文章内容
-    test_content = '''【京东返利：为什么你需要一个靠谱的返利工具？】
-在电商行业蓬勃发展的今天，京东凭借其正品保障，物流优势和品类丰富度，成为无数消费者购物的首选平台。
+test_title = "高省APP：开启你的省钱之旅"
+test_content = """<p>高省APP是一款全新的优惠券领取平台，让您的每一次购物都能省钱！</p>
 
-【高省返利APP：京东官方合作，返利更安心】
-为什么说"高省返利APP"是京东返利工具中的佼佼者？
+<p>【产品特色】</p>
+<p>✅ 海量优惠券实时更新</p>
+<p>✅ 一键领取，自动抵扣</p>
+<p>✅ 邀请好友还能赚佣金</p>
 
-【返利力度真实透明，告别"套路优惠"】
-高省返利APP坚持"真实返利、无套路"原则。'''
+<p>【使用方法】</p>
+<p>1. 下载并安装高省APP</p>
+<p>2. 注册成为会员</p>
+<p>3. 搜索心仪商品</p>
+<p>4. 领取优惠券下单</p>
 
-    # 获取产品"高省"的图片
-    product = Product.query.get(1)
-    images = Image.query.join(Image.products).filter(
-        Product.id == 1,
-        Image.status == 0
-    ).all()
+<p>立即下载高省APP，开启您的省钱之旅吧！</p>"""
 
-    print(f"产品: {product.name}")
-    print(f"图片数量: {len(images)}")
-    for img in images:
-        print(f"  - URL: {img.url}")
-        print(f"    位置类型: {img.position_type}, 位置值: {img.position_value}, 位置模式: {img.position_mode}")
+login_data = {
+    'username': 'admin',
+    'password': '123456'
+}
 
-    print(f"\n原始内容:\n{test_content}")
+try:
+    print("=== 登录 ===")
+    login_response = requests.post(f'{base_url}/api/auth/login', json=login_data)
+    print(f"登录状态码: {login_response.status_code}")
 
-    # 测试图片插入
-    website_ids = [6, 7, 8]  # 三个网站的ID
-    result = insert_images(test_content, images, website_ids)
+    if login_response.status_code == 200:
+        token = login_response.json().get('data', {}).get('token')
+        print(f"获取到token: {token[:20]}...")
 
-    print(f"\n=== 插入图片后的内容 ===")
-    print(result['content'])
+        headers = {'Authorization': f'Bearer {token}'}
 
-    print(f"\n内容是否包含img标签: {'<img' in result['content']}")
+        print("\n=== 获取产品列表 ===")
+        products_response = requests.get(f'{base_url}/api/products', headers=headers, params={'pageSize': 100})
+        products = products_response.json().get('data', {}).get('list', [])
+        print(f"产品数量: {len(products)}")
+        if products:
+            product = products[0]
+            print(f"选择产品: ID={product['id']}, 名称={product['name']}")
 
-    # 检查每个网站的图片插入情况
-    print(f"\n=== 各网站发布的内容预览 ===")
-    for wid in website_ids:
-        website = Website.query.get(wid)
-        print(f"\n{website.name} (ID: {wid}):")
-        print(f"  内容长度: {len(result['content'])} 字符")
-        print(f"  img标签数量: {result['content'].count('<img')}")
+        print("\n=== 发布文章到有目网 ===")
+        print(f"标题: {test_title}")
+        print(f"内容长度: {len(test_content)} 字符")
+
+        publish_response = requests.post(
+            f'{base_url}/api/publish/submit',
+            headers=headers,
+            json={
+                'productId': product['id'],
+                'websiteIds': [6],
+                'title': test_title,
+                'content': test_content
+            }
+        )
+        print(f"发布状态码: {publish_response.status_code}")
+        publish_result = publish_response.json()
+        print(f"发布响应: {publish_result}")
+
+        if publish_result.get('code') == 200:
+            print("\n✅ 文章发布成功！")
+        else:
+            print(f"\n❌ 发布失败: {publish_result.get('msg', '未知错误')}")
+
+    else:
+        print(f"登录失败: {login_response.text}")
+
+except Exception as e:
+    import traceback
+    print(f"测试过程中发生错误: {e}")
+    traceback.print_exc()

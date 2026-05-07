@@ -1,76 +1,64 @@
 <template>
-  <div class="prompt-template">
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>提示词模板管理</span>
-          <el-button type="primary" @click="openDialog()">新增模板</el-button>
-        </div>
-      </template>
+  <div class="app-container">
+    <div class="search-bar">
+      <el-input v-model="searchForm.name" placeholder="模板名称" clearable class="search-input" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button type="success" @click="handleAdd">新增模板</el-button>
+    </div>
 
-      <el-table :data="tableData" v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="name" label="模板名称" />
-        <el-table-column prop="productNames" label="关联产品" width="200">
-          <template #default="{ row }">
-            <span v-if="row.productNames && row.productNames.length > 0">{{ row.productNames.join(', ') }}</span>
-            <span v-else class="text-gray">未关联</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="businessType" label="业务类型" width="120" />
-        <el-table-column prop="isDefault" label="默认" width="80">
-          <template #default="{ row }"><el-tag v-if="row.isDefault === 1" type="success">默认</el-tag></template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '启用' : '禁用' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row.id)">删除</el-button>
-            <el-button link type="warning" v-if="row.isDefault !== 1" @click="setDefault(row.id)">设为默认</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+    <el-table :data="tableData" border :loading="loading">
+      <el-table-column label="模板名称" prop="name" />
+      <el-table-column label="关联产品">
+        <template #default="{ row }">
+          <span v-if="row.product_names && row.product_names.length > 0">{{ row.product_names.join(', ') }}</span>
+          <span v-else class="text-gray">无</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态">
+        <template #default="{ row }">
+          <el-tag :type="row.status === 0 ? 'success' : 'danger'">
+            {{ row.status === 0 ? '启用' : '禁用' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="默认">
+        <template #default="{ row }">
+          <el-tag v-if="row.is_default === 1" type="primary">默认</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="创建时间" prop="create_time" />
+      <el-table-column label="操作" width="200">
+        <template #default="{ row }">
+          <el-button link @click="handleEdit(row)">编辑</el-button>
+            <el-button link @click="handleSetDefault(row)" v-if="row.is_default !== 1">设为默认</el-button>
+            <el-button link @click="handleDelete(row)" v-if="row.status === 0">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
 
-      <el-pagination
-        v-model:current-page="page"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @current-change="fetchData"
-        @size-change="fetchData"
-        style="margin-top: 20px"
-      />
-    </el-card>
+    <el-pagination
+      :current-page="pagination.page"
+      :page-size="pagination.size"
+      :total="pagination.total"
+      @current-change="handlePageChange"
+      layout="total, prev, pager, next, jumper"
+    />
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑模板' : '新增模板'" width="800px" destroy-on-close>
+    <el-dialog :title="dialogTitle" v-model="dialogVisible" width="600px">
       <el-form :model="form" label-width="100px">
-        <el-form-item label="模板名称" required>
+        <el-form-item label="模板名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入模板名称" />
         </el-form-item>
-        <el-form-item label="关联产品">
-          <el-select v-model="form.productIds" placeholder="请选择产品（支持多选）" style="width: 100%" multiple clearable>
-            <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+        <el-form-item label="关联产品" prop="product_ids">
+          <el-select v-model="form.product_ids" multiple placeholder="请选择产品（可选）">
+            <el-option v-for="product in productOptions" :key="product.value" :label="product.label" :value="product.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="业务类型">
-          <el-input v-model="form.businessType" placeholder="请输入业务类型" />
+        <el-form-item label="提示词内容" prop="prompt_content">
+          <el-input v-model="form.prompt_content" type="textarea" :rows="8" placeholder="请输入提示词内容，使用{keywords}作为关键词占位符" />
         </el-form-item>
-        <el-form-item label="提示词内容" required>
-          <el-input v-model="form.promptContent" type="textarea" :rows="12" placeholder="请输入完整的提示词内容，支持变量：{keyword}、{keywords}" />
-        </el-form-item>
-        <el-form-item label="段落数量">
-          <el-input-number v-model="form.requiredParagraphs" :min="1" :max="20" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio :label="0">启用</el-radio>
-            <el-radio :label="1">禁用</el-radio>
-          </el-radio-group>
+        <el-form-item label="设为默认">
+          <el-switch v-model="form.is_default" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -83,37 +71,55 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
-const tableData = ref([])
 const loading = ref(false)
-const page = ref(1)
-const pageSize = ref(10)
-const total = ref(0)
-const products = ref([])
+const tableData = ref([])
+const searchForm = reactive({ name: '' })
+const pagination = reactive({ page: 1, size: 10, total: 0 })
 const dialogVisible = ref(false)
+const dialogTitle = ref('')
+const isEdit = ref(false)
+const productOptions = ref([])
 
 const form = reactive({
   id: null,
   name: '',
-  productIds: [],
-  businessType: '',
-  promptContent: '',
-  requiredParagraphs: 5,
-  status: 1
+  business_type: '',
+  required_paragraphs: 5,
+  product_ids: [],
+  prompt_content: '',
+  conclusion_text: '',
+  is_default: 0
 })
+
+const handleSearch = () => {
+  pagination.page = 1
+  fetchData()
+}
+
+const handlePageChange = (page) => {
+  pagination.page = page
+  fetchData()
+}
 
 const fetchData = async () => {
   loading.value = true
   try {
-    const res = await request.get('/prompt-templates', { params: { page: page.value, pageSize: pageSize.value } })
-    if (res.code === 200) {
-      tableData.value = res.data.list || []
-      total.value = res.data.total || 0
+    const result = await request.get('/prompt-templates', {
+      params: {
+        page: pagination.page,
+        size: pagination.size,
+        name: searchForm.name
+      }
+    })
+    if (result.code === 200) {
+      tableData.value = result.data.list
+      pagination.total = result.data.total
     }
-  } catch (e) {
-    ElMessage.error('获取数据失败')
+  } catch (error) {
+    console.error('获取数据失败:', error)
   } finally {
     loading.value = false
   }
@@ -121,84 +127,96 @@ const fetchData = async () => {
 
 const fetchProducts = async () => {
   try {
-    const res = await request.get('/products/all')
-    if (res.code === 200) {
-      products.value = res.data || []
+    const result = await request.get('/products')
+    if (result.code === 200) {
+      productOptions.value = result.data.list.map(p => ({ value: p.id, label: p.name }))
     }
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error('获取产品失败:', error)
   }
 }
 
-const openDialog = (row) => {
-  if (row) {
-    Object.assign(form, {
-      id: row.id,
-      name: row.name,
-      productIds: row.productIds || [],
-      businessType: row.businessType,
-      promptContent: row.promptContent,
-      requiredParagraphs: row.requiredParagraphs || 5,
-      status: row.status
-    })
-  } else {
-    Object.assign(form, {
-      id: null,
-      name: '',
-      productIds: [],
-      businessType: '',
-      promptContent: '',
-      requiredParagraphs: 5,
-      status: 1
-    })
-  }
+const handleAdd = () => {
+  dialogTitle.value = '新增提示词模板'
+  isEdit.value = false
+  resetForm()
   dialogVisible.value = true
 }
 
+const handleEdit = (row) => {
+  dialogTitle.value = '编辑提示词模板'
+  isEdit.value = true
+  form.id = row.id
+  form.name = row.name
+  form.business_type = row.business_type
+  form.required_paragraphs = row.required_paragraphs
+  form.product_ids = row.product_ids || []
+  form.prompt_content = row.prompt_content
+  form.conclusion_text = row.conclusion_text
+  form.is_default = row.is_default
+  dialogVisible.value = true
+}
+
+const handleSetDefault = async (row) => {
+  try {
+    const result = await request.put(`/prompt-templates/default/${row.id}`)
+    if (result.code === 200) {
+      ElMessage.success('设置默认成功')
+      fetchData()
+    }
+  } catch (error) {
+    console.error('设置默认失败:', error)
+    ElMessage.error('设置默认失败')
+  }
+}
+
+const handleDelete = async (row) => {
+  try {
+    const result = await request.delete(`/prompt-templates/${row.id}`)
+    if (result.code === 200) {
+      ElMessage.success('删除成功')
+      fetchData()
+    }
+  } catch (error) {
+    console.error('删除失败:', error)
+    ElMessage.error('删除失败')
+  }
+}
+
+const resetForm = () => {
+  form.id = null
+  form.name = ''
+  form.business_type = ''
+  form.required_paragraphs = 5
+  form.product_ids = []
+  form.prompt_content = ''
+  form.conclusion_text = ''
+  form.is_default = 0
+}
+
 const handleSubmit = async () => {
-  if (!form.name || !form.promptContent) {
-    ElMessage.warning('请填写必填项')
+  if (!form.name) {
+    ElMessage.warning('请输入模板名称')
     return
   }
+  if (!form.prompt_content) {
+    ElMessage.warning('请输入提示词内容')
+    return
+  }
+
   try {
-    const res = form.id
+    const result = isEdit.value 
       ? await request.put(`/prompt-templates/${form.id}`, form)
       : await request.post('/prompt-templates', form)
-    if (res.code === 200) {
-      ElMessage.success(form.id ? '更新成功' : '创建成功')
+    
+    if (result.code === 200) {
+      ElMessage.success(isEdit.value ? '更新成功' : '创建成功')
       dialogVisible.value = false
       fetchData()
     }
-  } catch (e) {
-    ElMessage.error('操作失败')
-  }
-}
-
-const handleDelete = (id) => {
-  ElMessageBox.confirm('确认删除该模板?', '警告', { type: 'warning' })
-    .then(async () => {
-      try {
-        const res = await request.delete(`/prompt-templates/${id}`)
-        if (res.code === 200) {
-          ElMessage.success('删除成功')
-          fetchData()
-        }
-      } catch (e) {
-        ElMessage.error('删除失败')
-      }
-    })
-    .catch(() => {})
-}
-
-const setDefault = async (id) => {
-  try {
-    const res = await request.put(`/prompt-templates/${id}/default`)
-    if (res.code === 200) {
-      ElMessage.success('设置成功')
-      fetchData()
-    }
-  } catch (e) {
-    ElMessage.error('设置失败')
+  } catch (error) {
+    console.error('提交失败:', error)
+    ElMessage.error('提交失败')
   }
 }
 
@@ -209,11 +227,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.app-container {
+  padding: 20px;
 }
+
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.search-input {
+  width: 200px;
+}
+
 .text-gray {
   color: #999;
 }

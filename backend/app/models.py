@@ -202,6 +202,7 @@ class PromptTemplate(db.Model):
     prompt_content = db.Column(db.Text, nullable=False)
     required_paragraphs = db.Column(db.Integer, default=5)
     business_type = db.Column(db.String(50))
+    conclusion_text = db.Column(db.Text)
     is_default = db.Column(db.Integer, default=0)
     status = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
@@ -253,6 +254,7 @@ class AIModel(db.Model):
     api_key = db.Column(db.String(500))
     api_url = db.Column(db.String(500))
     model_name = db.Column(db.String(100))
+    parameters = db.Column(db.Text)
     is_default = db.Column(db.Integer, default=0)
     status = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
@@ -297,5 +299,17 @@ class PublishRecord(db.Model):
     result_url = db.Column(db.String(500))
     error_msg = db.Column(db.Text)
     publish_time = db.Column(db.DateTime, default=datetime.now)
+    create_time = db.Column(db.DateTime, default=datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class Draft(db.Model):
+    __tablename__ = 'drafts'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(200), nullable=False)
+    data = db.Column(db.Text, nullable=False)
+    create_by = db.Column(db.Integer)
+    status = db.Column(db.Integer, default=0)
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)

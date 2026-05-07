@@ -10,7 +10,7 @@ def create_app(config_name=None):
     if config_name is None:
         config_name = os.getenv('FLASK_ENV', 'development')
 
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder='static', static_url_path='/static')
     app.config.from_object(config[config_name])
 
     CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -28,7 +28,7 @@ def create_app(config_name=None):
 
 
 def register_blueprints(app):
-    from app.routes import auth, users, products, images, keywords, templates, prompt_templates, ai, models as models_bp, websites, publish, records, logs, roles, dept, menus
+    from app.routes import auth, users, products, images, keywords, templates, prompt_templates, ai, models as models_bp, websites, publish, records, logs, roles, dept, menus, drafts
 
     app.register_blueprint(auth.bp, url_prefix='/api/auth')
     app.register_blueprint(users.bp, url_prefix='/api/users')
@@ -47,6 +47,7 @@ def register_blueprints(app):
     app.register_blueprint(roles.bp, url_prefix='/api/roles')
     app.register_blueprint(dept.bp, url_prefix='/api/dept')
     app.register_blueprint(menus.bp, url_prefix='/api/menus')
+    app.register_blueprint(drafts.bp, url_prefix='/api')
 
 
 def register_handlers(app):
@@ -137,13 +138,13 @@ def init_data():
             {'menu_name': '操作日志', 'menu_type': 'C', 'path': '/system/oper-log', 'component': 'system/oper-log/index', 'parent_id': menu_id_map['系统管理'], 'menu_sort': 5},
             {'menu_name': '文章发布', 'menu_type': 'C', 'path': '/article/publish', 'component': 'article/publish/index', 'parent_id': menu_id_map['文章管理'], 'menu_sort': 1},
             {'menu_name': '发布记录', 'menu_type': 'C', 'path': '/article/record', 'component': 'article/record/index', 'parent_id': menu_id_map['文章管理'], 'menu_sort': 2},
+            {'menu_name': '草稿管理', 'menu_type': 'C', 'path': '/article/draft', 'component': 'article/draft/index', 'parent_id': menu_id_map['文章管理'], 'menu_sort': 3},
             {'menu_name': '产品管理', 'menu_type': 'C', 'path': '/promotion/product', 'component': 'promotion/product/index', 'parent_id': menu_id_map['推广管理'], 'menu_sort': 1},
             {'menu_name': '图片管理', 'menu_type': 'C', 'path': '/promotion/image', 'component': 'promotion/image/index', 'parent_id': menu_id_map['推广管理'], 'menu_sort': 2},
             {'menu_name': '网站配置', 'menu_type': 'C', 'path': '/promotion/website', 'component': 'promotion/website/index', 'parent_id': menu_id_map['推广管理'], 'menu_sort': 3},
             {'menu_name': '关键词管理', 'menu_type': 'C', 'path': '/ai-config/keyword', 'component': 'ai-config/keyword/index', 'parent_id': menu_id_map['AI配置'], 'menu_sort': 1},
             {'menu_name': 'AI模型', 'menu_type': 'C', 'path': '/ai-config/model', 'component': 'ai-config/model/index', 'parent_id': menu_id_map['AI配置'], 'menu_sort': 2},
-            {'menu_name': '内容模板', 'menu_type': 'C', 'path': '/ai-config/content-template', 'component': 'ai-config/content-template/index', 'parent_id': menu_id_map['AI配置'], 'menu_sort': 3},
-            {'menu_name': '标题模板', 'menu_type': 'C', 'path': '/ai-config/title-template', 'component': 'ai-config/title-template/index', 'parent_id': menu_id_map['AI配置'], 'menu_sort': 4},
+            {'menu_name': '提示词模板', 'menu_type': 'C', 'path': '/ai-config/prompt-template', 'component': 'ai-config/prompt-template/index', 'parent_id': menu_id_map['AI配置'], 'menu_sort': 3},
         ]
 
         for m in child_menus:
@@ -202,15 +203,10 @@ def init_data():
             {'menu_name': '模型删除', 'menu_type': 'F', 'perms': 'ai:model:delete', 'parent_id': menu_id_map['AI模型'], 'menu_sort': 3},
             {'menu_name': '模型查询', 'menu_type': 'F', 'perms': 'ai:model:query', 'parent_id': menu_id_map['AI模型'], 'menu_sort': 4},
             
-            {'menu_name': '模板新增', 'menu_type': 'F', 'perms': 'ai:content:add', 'parent_id': menu_id_map['内容模板'], 'menu_sort': 1},
-            {'menu_name': '模板编辑', 'menu_type': 'F', 'perms': 'ai:content:edit', 'parent_id': menu_id_map['内容模板'], 'menu_sort': 2},
-            {'menu_name': '模板删除', 'menu_type': 'F', 'perms': 'ai:content:delete', 'parent_id': menu_id_map['内容模板'], 'menu_sort': 3},
-            {'menu_name': '模板查询', 'menu_type': 'F', 'perms': 'ai:content:query', 'parent_id': menu_id_map['内容模板'], 'menu_sort': 4},
-            
-            {'menu_name': '模板新增', 'menu_type': 'F', 'perms': 'ai:title:add', 'parent_id': menu_id_map['标题模板'], 'menu_sort': 1},
-            {'menu_name': '模板编辑', 'menu_type': 'F', 'perms': 'ai:title:edit', 'parent_id': menu_id_map['标题模板'], 'menu_sort': 2},
-            {'menu_name': '模板删除', 'menu_type': 'F', 'perms': 'ai:title:delete', 'parent_id': menu_id_map['标题模板'], 'menu_sort': 3},
-            {'menu_name': '模板查询', 'menu_type': 'F', 'perms': 'ai:title:query', 'parent_id': menu_id_map['标题模板'], 'menu_sort': 4},
+            {'menu_name': '模板新增', 'menu_type': 'F', 'perms': 'ai:prompt:add', 'parent_id': menu_id_map['提示词模板'], 'menu_sort': 1},
+            {'menu_name': '模板编辑', 'menu_type': 'F', 'perms': 'ai:prompt:edit', 'parent_id': menu_id_map['提示词模板'], 'menu_sort': 2},
+            {'menu_name': '模板删除', 'menu_type': 'F', 'perms': 'ai:prompt:delete', 'parent_id': menu_id_map['提示词模板'], 'menu_sort': 3},
+            {'menu_name': '模板查询', 'menu_type': 'F', 'perms': 'ai:prompt:query', 'parent_id': menu_id_map['提示词模板'], 'menu_sort': 4},
         ]
 
         for m in button_menus:

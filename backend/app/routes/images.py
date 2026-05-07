@@ -1,8 +1,50 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, send_from_directory
 from app.routes.auth import token_required
 from app.models import db, Image, Product, SysOperLog
+from werkzeug.utils import secure_filename
+from datetime import datetime
+import os
 
 bp = Blueprint('images', __name__)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+# 获取 backend 目录路径 (routes/images.py -> app -> backend)
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'static', 'uploads')
+
+@bp.route('/uploads/<path:filename>', methods=['GET'])
+def serve_uploads(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@bp.route('/upload', methods=['POST'])
+@token_required
+def upload_image():
+    if 'file' not in request.files:
+        return jsonify({'code': 400, 'msg': '没有文件', 'data': None})
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'code': 400, 'msg': '文件名为空', 'data': None})
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        timestamp = int(datetime.now().timestamp())
+        filename = f"{timestamp}_{filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        
+        try:
+            file.save(filepath)
+        except Exception as e:
+            return jsonify({'code': 500, 'msg': f'保存文件失败: {str(e)}', 'data': None})
+
+        file_url = f'/api/images/uploads/{filename}'
+        return jsonify({'code': 200, 'msg': '上传成功', 'data': {'url': file_url}})
+
+    return jsonify({'code': 400, 'msg': '不支持的文件类型', 'data': None})
 
 
 @bp.route('', methods=['GET'])
@@ -141,3 +183,5 @@ def update_image_status(image_id):
     db.session.commit()
 
     return jsonify({'code': 200, 'msg': '状态更新成功', 'data': None})
+
+

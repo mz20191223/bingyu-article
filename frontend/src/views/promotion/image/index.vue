@@ -10,12 +10,18 @@
 
       <el-table :data="tableData" v-loading="loading">
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="url" label="图片" width="120">
+        <el-table-column prop="url" label="图片" width="140">
           <template #default="{ row }">
-            <el-image :src="row.url" style="width: 80px; height: 60px" fit="cover" />
+            <div class="image-wrapper">
+              <el-image :src="row.url" style="width: 80px; height: 60px" fit="cover" />
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="positionType" label="插入位置" width="100" />
+        <el-table-column prop="positionType" label="插入位置" width="100">
+          <template #default="{ row }">
+            <span>{{ getPositionTypeLabel(row.positionType) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="products" label="关联产品" width="150">
           <template #default="{ row }">
             <span v-if="row.products && row.products.length > 0">{{ row.products.map(p => p.name).join(', ') }}</span>
@@ -39,10 +45,19 @@
       <el-pagination v-model:current-page="pagination.page" v-model:page-size="pagination.pageSize" :total="pagination.total" layout="total, prev, pager, next" style="margin-top: 20px; justify-content: flex-end" @change="loadData" />
     </el-card>
 
+    <!-- 编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="图片URL" prop="url">
-          <el-input v-model="form.url" placeholder="请输入图片URL" />
+        <el-form-item label="图片" prop="url">
+          <div class="upload-section">
+            <el-input v-model="form.url" placeholder="请输入图片URL或点击上传" style="width: 300px" />
+            <el-upload action="/api/images/upload" :show-file-list="false" :on-success="handleUploadSuccess" :on-error="handleUploadError" :headers="{ Authorization: 'Bearer ' + token }" name="file">
+              <el-button type="primary" style="margin-left: 10px">本地上传</el-button>
+            </el-upload>
+          </div>
+          <div v-if="form.url" class="image-preview">
+            <img :src="form.url" />
+          </div>
         </el-form-item>
         <el-form-item label="插入位置" prop="positionType">
           <el-select v-model="form.positionType" style="width: 100%">
@@ -85,6 +100,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import api from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 
 const loading = ref(false)
 const tableData = ref([])
@@ -93,6 +109,8 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
 const productList = ref([])
+const userStore = useUserStore()
+const token = userStore.token
 const form = reactive({ id: null, url: '', positionType: 'auto', positionValue: 1, positionMode: 'before', productIds: [], status: 1 })
 const rules = { url: [{ required: true, message: '请输入图片URL', trigger: 'blur' }] }
 
@@ -113,30 +131,95 @@ const loadProducts = async () => {
   } catch (error) { ElMessage.error('加载产品列表失败') }
 }
 
-const handleAdd = () => { Object.assign(form, { id: null, url: '', positionType: 'auto', positionValue: 1, positionMode: 'before', productIds: [], status: 1 }); dialogTitle.value = '新增图片'; dialogVisible.value = true }
-const handleEdit = (row) => { 
-  const productIds = row.products ? row.products.map(p => p.id) : []
-  Object.assign(form, { id: row.id, url: row.url, positionType: row.positionType, positionValue: row.positionValue, positionMode: row.positionMode || 'before', productIds: productIds, status: row.status }); 
-  dialogTitle.value = '编辑图片'; 
+const handleAdd = () => { 
+  Object.assign(form, { id: null, url: '', positionType: 'auto', positionValue: 1, positionMode: 'before', productIds: [], status: 1 })
+  dialogTitle.value = '新增图片'
   dialogVisible.value = true 
 }
-const handleDelete = async (row) => {
-  try { await ElMessageBox.confirm('确定删除?', '提示', { type: 'warning' }); await api.delete(`/images/${row.id}`); ElMessage.success('删除成功'); loadData() }
-  catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
+
+const handleEdit = (row) => { 
+  const productIds = row.products ? row.products.map(p => p.id) : []
+  Object.assign(form, { id: row.id, url: row.url, positionType: row.positionType, positionValue: row.positionValue, positionMode: row.positionMode || 'before', productIds: productIds, status: row.status })
+  dialogTitle.value = '编辑图片'
+  dialogVisible.value = true 
 }
+
+const handleDelete = async (row) => {
+  try { 
+    await ElMessageBox.confirm('确定删除?', '提示', { type: 'warning' })
+    await api.delete(`/images/${row.id}`)
+    ElMessage.success('删除成功')
+    loadData()
+  } catch (error) { 
+    if (error !== 'cancel') ElMessage.error('删除失败') 
+  }
+}
+
 const handleSubmit = async () => {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (valid) {
-      try { form.id ? await api.put(`/images/${form.id}`, form) : await api.post('/images', form); ElMessage.success('操作成功'); dialogVisible.value = false; loadData() }
-      catch (error) { ElMessage.error(error.message || '操作失败') }
+      try { 
+        form.id ? await api.put(`/images/${form.id}`, form) : await api.post('/images', form)
+        ElMessage.success('操作成功')
+        dialogVisible.value = false
+        loadData()
+      } catch (error) { ElMessage.error(error.message || '操作失败') }
     }
   })
 }
-onMounted(() => { loadData(); loadProducts() })
+
+const handleUploadSuccess = (res) => {
+  if (res.code === 200) {
+    form.url = res.data.url
+    ElMessage.success('上传成功')
+  } else {
+    ElMessage.error(res.msg || '上传失败')
+  }
+}
+
+const handleUploadError = () => {
+  ElMessage.error('上传失败')
+}
+
+const getPositionTypeLabel = (type) => {
+  const map = {
+    'auto': '自动',
+    'before_first': '开头',
+    'after_last': '结尾',
+    'custom': '段落'
+  }
+  return map[type] || type
+}
+
+onMounted(() => { 
+  loadData() 
+  loadProducts() 
+})
 </script>
 
 <style scoped>
 .page-container { padding: 20px }
 .card-header { display: flex; justify-content: space-between; align-items: center }
+
+.upload-section {
+  display: flex;
+  align-items: center;
+}
+
+.image-preview {
+  margin-top: 10px;
+  max-width: 300px;
+}
+
+.image-preview img {
+  max-width: 100%;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.image-wrapper {
+  position: relative;
+  display: inline-block;
+}
 </style>

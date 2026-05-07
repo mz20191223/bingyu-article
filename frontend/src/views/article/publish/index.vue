@@ -27,19 +27,25 @@
               </el-select>
             </template>
           </el-table-column>
-          <el-table-column label="AI生成" width="100">
+          <el-table-column label="关键词" width="250">
+            <template #default="{ row }">
+              <el-input v-model="row.keywords" placeholder="输入关键词" size="small" style="width: 150px" />
+              <el-button type="text" size="small" @click="handleRandomKeywords(row)" :disabled="!row.productId">随机</el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="AI生成" width="120">
             <template #default="{ row }">
               <el-button type="primary" size="small" @click="handleGenerate(row)" :loading="row.generating" :disabled="!row.productId">
                 AI生成
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="标题">
+          <el-table-column label="标题" width="200">
             <template #default="{ row }">
               <el-input v-model="row.title" placeholder="请输入标题（不超过100字符）" maxlength="100" show-word-limit />
             </template>
           </el-table-column>
-          <el-table-column label="内容" width="250">
+          <el-table-column label="内容">
             <template #default="{ row }">
               <el-input v-model="row.content" type="textarea" :rows="1" placeholder="请输入或粘贴内容" />
             </template>
@@ -69,7 +75,11 @@
         </el-table>
 
         <div style="margin-top: 20px; display: flex; justify-content: space-between;">
-          <el-button type="primary" @click="handleAddRow">+ 添加一行</el-button>
+          <div>
+            <el-button type="primary" @click="handleAddRow">+ 添加一行</el-button>
+            <el-button @click="handleSaveDraft" style="margin-left: 10px">保存草稿</el-button>
+            <el-button @click="handleExportDraft" style="margin-left: 10px">导出为Excel</el-button>
+          </div>
           <el-button type="success" size="large" @click="handlePublishAll" :loading="publishingAll">发布全部</el-button>
         </div>
 
@@ -80,7 +90,7 @@
 
       <div v-show="mode === 'excel'">
         <div style="margin-bottom: 20px">
-          <el-link type="primary" :href="'/api/publish/templates/download'" target="_blank">下载模板文件</el-link>
+          <el-button type="primary" @click="downloadTemplate" :loading="downloading">下载模板文件</el-button>
         </div>
         <el-upload
           ref="uploadRef"
@@ -142,23 +152,53 @@ const publishSummary = ref(null)
 const showPreviewDialog = ref(false)
 const importing = ref(false)
 const publishing = ref(false)
+const downloading = ref(false)
 const uploadRef = ref(null)
 const selectedFile = ref(null)
 const importList = ref([])
 
 const products = ref([])
 const websites = ref([])
+const keywords = ref([])
 
 const errorCount = computed(() => importList.value.filter(i => i.error).length)
 
+const downloadTemplate = async () => {
+  downloading.value = true
+  try {
+    const response = await api.get('/publish/templates/download', {
+      responseType: 'blob'
+    })
+    
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '文章发布模板.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('模板下载成功')
+  } catch (error) {
+    console.error('Failed to download template:', error)
+    ElMessage.error('下载模板失败，请稍后重试')
+  } finally {
+    downloading.value = false
+  }
+}
+
 const loadData = async () => {
   try {
-    const [pRes, wRes] = await Promise.all([
+    const [pRes, wRes, kRes] = await Promise.all([
       api.get('/products', { params: { pageSize: 100, status: 0 } }),
-      api.get('/websites', { params: { pageSize: 100, status: 0 } })
+      api.get('/websites', { params: { pageSize: 100, status: 0 } }),
+      api.get('/keywords', { params: { pageSize: 100, status: 0 } })
     ])
     products.value = pRes.data.list || []
     websites.value = wRes.data.list || []
+    keywords.value = kRes.data.list || []
   } catch (error) {
     console.error('Failed to load data:', error)
   }
@@ -169,10 +209,15 @@ const handleProductChange = (index) => {
 }
 
 const handleAddRow = () => {
+  const defaultProduct = products.value.find(p => p.isDefault === 1) || products.value[0]
+  const defaultWebsites = websites.value.filter(w => w.isDefault === 1)
+  const selectedWebsites = defaultWebsites.length > 0 ? defaultWebsites.map(w => w.id) : (websites.value[0] ? [websites.value[0].id] : [])
+
   tableData.value.push({
     id: Date.now(),
-    productId: null,
-    websiteIds: [],
+    productId: defaultProduct?.id || null,
+    websiteIds: selectedWebsites,
+    keywords: '',
     title: '',
     content: '',
     generating: false,
@@ -182,8 +227,98 @@ const handleAddRow = () => {
   })
 }
 
+const handleRandomKeywords = (row) => {
+  if (keywords.value.length === 0) {
+    ElMessage.warning('关键词库为空')
+    return
+  }
+  
+  const shuffled = [...keywords.value].sort(() => 0.5 - Math.random())
+  const selected = shuffled.slice(0, 1)
+  row.keywords = selected.map(k => k.keyword).join(',')
+  ElMessage.success(`已随机抽取 1 个关键词`)
+}
+
 const handleDeleteRow = (index) => {
   tableData.value.splice(index, 1)
+}
+
+const handleSaveDraft = async () => {
+  if (tableData.value.length === 0) {
+    ElMessage.warning('没有数据可保存')
+    return
+  }
+
+  try {
+    const { value: name } = await ElMessageBox.prompt(
+      '请输入草稿名称',
+      '保存草稿',
+      {
+        confirmButtonText: '保存',
+        cancelButtonText: '取消',
+        inputValidator: (value) => {
+          if (!value.trim()) {
+            return '草稿名称不能为空'
+          }
+          return true
+        }
+      }
+    )
+
+    const draftData = tableData.value.map(row => ({
+      productId: row.productId,
+      websiteIds: row.websiteIds,
+      keywords: row.keywords,
+      title: row.title,
+      content: row.content
+    }))
+
+    const res = await api.post('/drafts', {
+      name: name.trim(),
+      data: JSON.stringify(draftData)
+    })
+
+    if (res.code === 200) {
+      ElMessage.success('草稿保存成功')
+    } else {
+      ElMessage.error(res.msg || '保存失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('保存失败')
+    }
+  }
+}
+
+const handleExportDraft = async () => {
+  if (tableData.value.length === 0) {
+    ElMessage.warning('没有数据可导出')
+    return
+  }
+
+  try {
+    const draftData = tableData.value.map(row => ({
+      productId: row.productId,
+      websiteIds: row.websiteIds,
+      keywords: row.keywords,
+      title: row.title,
+      content: row.content
+    }))
+
+    const res = await api.post('/drafts', {
+      name: `导出草稿_${new Date().toLocaleString('zh-CN')}`,
+      data: JSON.stringify(draftData)
+    })
+
+    if (res.code === 200 && res.data?.id) {
+      window.open(`/api/drafts/${res.data.id}/export`, '_blank')
+      ElMessage.success('正在导出...')
+    } else {
+      ElMessage.error(res.msg || '导出失败')
+    }
+  } catch (error) {
+    ElMessage.error('导出失败')
+  }
 }
 
 const handleGenerate = async (row) => {
@@ -193,13 +328,12 @@ const handleGenerate = async (row) => {
   }
 
   row.generating = true
-  row.generatingMsg = '正在获取模板...'
+  row.generatingMsg = '正在调用AI生成...'
 
   try {
-    row.generatingMsg = '正在调用AI生成...'
-
-    const res = await api.post('/publish/generate', {
+    const res = await api.post('/ai/generate', {
       productId: row.productId,
+      keywords: row.keywords || '',
       websiteIds: row.websiteIds.length > 0 ? row.websiteIds : []
     })
 
@@ -478,6 +612,7 @@ const initTable = () => {
       id: Date.now(),
       productId: defaultProduct?.id || null,
       websiteIds: selectedWebsites,
+      keywords: '',
       title: '',
       content: '',
       generating: false,

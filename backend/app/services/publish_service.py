@@ -18,8 +18,8 @@ def generate_article(product_id, website_ids, content_template_id, title_templat
 
     ai_service = AIService(model_id)
 
-    title = ai_service.generate_title(title_template_id, product, keywords)
-    content = ai_service.generate_content(content_template_id, product, keywords)
+    title = ai_service.generate_title(product_id, title_template_id, keywords)
+    content = ai_service.generate_content(product_id, content_template_id, keywords)
 
     images = Image.query.join(Image.products).filter(
         Image.status == 0,
@@ -54,10 +54,12 @@ def insert_images(content, images):
     insert_points = []
     
     for img in images:
-        img_info = {'url': img.url, 'position_type': img.position_type, 'position_value': img.position_value, 'position_mode': img.position_mode}
+        # 使用原图（不再使用合成图）
+        img_url = img.url
+        img_info = {'url': img_url, 'position_type': img.position_type, 'position_value': img.position_value, 'position_mode': img.position_mode}
         result_images.append(img_info)
         
-        img_html = f'<p><img src="{img.url}" alt="产品图片" /></p>'
+        img_html = f'<p><img src="{img_url}" alt="产品图片" /></p>'
         
         if img.position_type == 'before_first':
             # 插入到最前面
@@ -257,7 +259,24 @@ def publish_to_website(record, website, title, content):
                     except Exception as e:
                         print(f"Warning: Failed to click publish button: {e}")
 
-                result_url = page.url
+                # 根据标题查找文章并进入详情页获取链接
+                result_url = None
+
+                # 发布后跳转到用户文章列表页
+                postlist_url = "http://yomowoo.com/user/postlist.html"
+                try:
+                    print(f"尝试访问用户文章列表页: {postlist_url}")
+                    page.goto(postlist_url, timeout=120000, wait_until="load")
+                    time.sleep(5)
+
+                    # 查找文章
+                    result_url = find_article_by_title(page, title)
+                    print(f"查找结果URL: {result_url}")
+                except Exception as e:
+                    print(f"访问用户文章列表页或查找文章失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+
                 browser.close()
 
                 return {'url': result_url}
@@ -271,3 +290,70 @@ def publish_to_website(record, website, title, content):
 
     except Exception as e:
         raise Exception(f'浏览器自动化发布失败: {str(e)}')
+
+
+def find_article_by_title(page, title):
+    """根据标题查找文章并进入详情页获取链接"""
+    import re
+    time.sleep(3)
+
+    clean_title = re.sub(r'[【】\[\]（）\(\)]', '', title).strip()
+    print(f"查找文章标题: {clean_title}")
+
+    try:
+        all_links = page.query_selector_all('a[href]')
+        print(f"页面上找到 {len(all_links)} 个链接")
+
+        for link in all_links:
+            href = link.get_attribute('href')
+            if not href:
+                continue
+
+            if not (('/post/' in href or '/article/' in href or '/info/' in href or '.html' in href)):
+                continue
+
+            try:
+                link_text = link.inner_text().strip()
+            except:
+                link_text = ""
+
+            link_text_clean = re.sub(r'[【】\[\]（）\(\)]', '', link_text).strip()
+
+            matched = False
+            if clean_title and link_text_clean:
+                if link_text_clean == clean_title:
+                    matched = True
+                    print(f"精确匹配成功!")
+                elif clean_title in link_text_clean:
+                    matched = True
+                    print(f"包含匹配成功!")
+                elif len(clean_title) > 10 and link_text_clean.startswith(clean_title[:15]):
+                    matched = True
+                    print(f"前缀匹配成功!")
+
+            if matched:
+                print(f"找到文章链接: {href}")
+                return href
+
+        print("精确匹配未找到，尝试URL模式查找...")
+        article_links = []
+        for link in all_links:
+            href = link.get_attribute('href')
+            if href and ('/post/' in href or '/article/' in href or '/info/' in href):
+                if 'comment' not in href.lower() and 'reply' not in href.lower():
+                    article_links.append(href)
+
+        if article_links:
+            print(f"找到 {len(article_links)} 个文章链接，使用第一个")
+            first_link = article_links[0]
+            print(f"文章链接: {first_link}")
+            return first_link
+
+        print("未找到文章链接")
+
+    except Exception as e:
+        print(f"查找文章失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return page.url

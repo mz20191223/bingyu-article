@@ -61,8 +61,7 @@ def create_model():
         model_name=data.get('modelName'),
         parameters=data.get('parameters'),
         is_default=data.get('isDefault', 0),
-        status=data.get('status', 1),
-        create_by=g.user_id
+        status=data.get('status', 1)
     )
     db.session.add(model)
     db.session.commit()

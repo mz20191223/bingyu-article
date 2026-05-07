@@ -53,6 +53,11 @@ const routes = [
         component: () => import('@/views/article/record/index.vue')
       },
       {
+        path: 'article/draft',
+        name: 'Draft',
+        component: () => import('@/views/article/draft/index.vue')
+      },
+      {
         path: 'promotion/product',
         name: 'Product',
         component: () => import('@/views/promotion/product/index.vue')
@@ -78,16 +83,6 @@ const routes = [
         component: () => import('@/views/ai-config/model/index.vue')
       },
       {
-        path: 'ai-config/content-template',
-        name: 'ContentTemplate',
-        component: () => import('@/views/ai-config/content-template/index.vue')
-      },
-      {
-        path: 'ai-config/title-template',
-        name: 'TitleTemplate',
-        component: () => import('@/views/ai-config/title-template/index.vue')
-      },
-      {
         path: 'ai-config/prompt-template',
         name: 'PromptTemplate',
         component: () => import('@/views/ai-config/prompt-template/index.vue')
@@ -105,20 +100,29 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   const token = userStore.token
 
-  if (to.path !== '/login' && !token) {
-    next('/login')
-  } else if (to.path === '/login' && token) {
-    // 如果已登录但菜单数据为空，先获取菜单数据
-    if (userStore.menus.length === 0) {
+  try {
+    if (to.path !== '/login' && !token) {
+      next('/login')
+    } else if (to.path === '/login' && token) {
+      // 如果已登录但菜单数据为空，先获取菜单数据
+      if (userStore.menus.length === 0) {
+        await userStore.getUserInfo()
+      }
+      next('/')
+    } else if (to.path !== '/login' && token && userStore.menus.length === 0) {
+      // 已登录但菜单数据为空，先获取菜单数据
       await userStore.getUserInfo()
+      next()
+    } else {
+      next()
     }
-    next('/')
-  } else if (to.path !== '/login' && token && userStore.menus.length === 0) {
-    // 已登录但菜单数据为空，先获取菜单数据
-    await userStore.getUserInfo()
-    next()
-  } else {
-    next()
+  } catch (error) {
+    console.error('Router guard error:', error)
+    if (to.path !== '/login') {
+      next('/login')
+    } else {
+      next()
+    }
   }
 })
 
